@@ -1,0 +1,56 @@
+# 本机凭据与配置；示例配置继续纳入版本管理。
+.env
+.env.*
+!.env.example
+/server/config/*
+!/server/config/config.example.yaml
+/deploy/runtime/
+*.local.yaml
+*.local.yml
+*.pem
+*.key
+*.p12
+*.pfx
+*.keystore
+
+# IDE、编辑器和系统生成的本机文件（包括子项目）。
+.idea/
+.vscode/
+*.iml
+*.swp
+*.swo
+*~
+.DS_Store
+._*
+Thumbs.db
+
+# 依赖与可重新生成的构建产物；保留 package-lock.json、go.sum 和 Gen 源码。
+node_modules/
+/web/.next/
+/web/out/
+/web/next-env.d.ts
+*.tsbuildinfo
+/server/bin/
+*.test
+
+# 上传、访问日志、审计补偿和备份属于运行数据。
+/server/storage/
+*.log
+*.pid
+*.dump
+*.sql.gz
+
+# 测试报告与工具缓存。
+/web/.vitest/
+/web/coverage/
+/server/coverage/
+/coverage/
+coverage.out
+coverage.html
+.cache/
+__pycache__/
+*.py[cod]
+
+# 由 scripts/build-preview.py 从源码与设计素材生成的离线预览。
+/prototype/index.html
+/prototype/preview.fragment.html

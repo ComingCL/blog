@@ -1,0 +1,17 @@
+# Build-only public placeholders. Real configuration is mounted at runtime.
+server:
+  port: 8080
+  origin: "https://build.invalid"
+  api_origin: "http://127.0.0.1:8080"
+  web_host: "0.0.0.0"
+  web_port: 3100
+database:
+  dsn: "postgres://unused:unused@postgres/nightlog?sslmode=disable"
+security:
+  audit_key: "build-placeholder-never-use-for-runtime-authentication"
+  cookie_secure: true
+storage:
+  path: "/app/data"
+admin:
+  username: "admin"
+  password: ""

@@ -1,0 +1,23 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    entrypoint: ["/bin/sh", "/opt/blog/dev-postgres-entrypoint.sh"]
+    environment:
+      POSTGRES_DB: nightlog
+      POSTGRES_USER: nightlog
+      POSTGRES_PASSWORD_FILE: /run/pg-private/password
+    secrets: [db_password]
+    ports: ["127.0.0.1:5432:5432"]
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./dev-postgres-entrypoint.sh:/opt/blog/dev-postgres-entrypoint.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nightlog"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+secrets:
+  db_password:
+    file: ./runtime/development/db_password
+volumes:
+  postgres_data:

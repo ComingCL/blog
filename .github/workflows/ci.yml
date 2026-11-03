@@ -1,0 +1,37 @@
+name: Nightlog checks
+on: [push, pull_request]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    env:
+      COMPOSE_PROJECT_NAME: blog-ci-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+        working-directory: web
+      - run: python3 scripts/setup.py
+      - run: python3 -m unittest discover -s scripts -p 'test_*.py' && node --test deploy/supervisor.test.mjs scripts/setup-db.test.mjs
+      - run: docker compose -f deploy/compose.yaml up -d --wait --wait-timeout 120 postgres
+      - run: go test ./... && go test ./src/infrastructure/db -args -integration-config ../../../config/config.yaml && go vet ./...
+        working-directory: server
+        env:
+          CGO_ENABLED: 0
+      - run: go run ./src/cmd/gen && git diff --exit-code -- src/infrastructure/db/query
+        working-directory: server
+        env:
+          CGO_ENABLED: 0
+      - run: npm run test:config && npm run test:unit && npm run typecheck && npm run build
+        working-directory: web
+        env:
+          NEXT_TELEMETRY_DISABLED: 1
+      - if: always()
+        run: docker compose -f deploy/compose.yaml down --volumes --remove-orphans

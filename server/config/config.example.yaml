@@ -1,0 +1,29 @@
+# 复制为 config.yaml，或运行 python3 scripts/setup.py 自动生成本机配置。
+# config.yaml 包含凭据，不提交 Git；修改后重启前后端。
+server:
+  port: 8080
+  origin: "http://127.0.0.1:3100"
+  api_origin: "http://127.0.0.1:8080"
+  # Web listener is independent of the public origin in container deployments.
+  web_host: "127.0.0.1"
+  web_port: 3100
+  # Actual reverse-proxy peers only; empty means use the TCP client IP.
+  trusted_proxies: []
+
+database:
+  dsn: "postgres://user:password@127.0.0.1:5432/nightlog?sslmode=disable"
+
+security:
+  # setup.py 会生成随机密钥，Go / Next.js 服务端共用。
+  audit_key: "nightlog-local-development-change-this-key"
+  cookie_secure: false
+
+storage:
+  # 相对路径以本配置文件所在目录为基准，不随启动目录变化。
+  path: "../storage"
+
+admin:
+  username: "admin"
+  # 仅用于命令行首次创建管理员，修改此值不会更改已有账号密码。
+  # setup.py 会生成随机初始密码。
+  password: ""
