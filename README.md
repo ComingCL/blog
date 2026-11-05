@@ -71,7 +71,7 @@ python3 scripts/deploy.py --origin https://blog.example.com
 
 替换成自己的域名。脚本构建并启动 Go／Next.js、PostgreSQL、Caddy HTTPS，执行迁移、按需创建管理员并检查就绪。首次部署独立生成高强度随机数据库密码、管理员初始密码及审计密钥，保存在忽略的 `deploy/runtime/production/`；重复部署保留凭据和数据。开发数据库与本机 YAML 不受影响。
 
-更新部署直接再次执行 `python3 scripts/deploy.py`；状态、日志、备份分别使用 `status`、`logs`、`backup` 子命令。完整前提、密码位置、镜像源、隔离测试和恢复边界见 [生产部署](docs/deployment.md)；监控建议与日志规则见 [监控与日志](docs/monitoring.md)。
+更新部署直接再次执行 `python3 scripts/deploy.py`；状态、日志、备份分别使用 `status`、`logs`、`backup` 子命令。镜像、APT、npm、Go 下载源可通过部署参数切换。完整前提、密码位置、镜像源、隔离测试和恢复边界见 [生产部署](docs/deployment.md)；监控建议与日志规则见 [监控与日志](docs/monitoring.md)。
 
 ## 代码结构
 

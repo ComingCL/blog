@@ -19,6 +19,10 @@ from urllib.request import urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DIRECTORY = ROOT / "deploy/runtime/production"
+DEFAULT_REGISTRY = "m.daocloud.io/docker.io/library"
+DEFAULT_APT_MIRROR = "https://mirrors.aliyun.com"
+DEFAULT_NPM_REGISTRY = "https://registry.npmmirror.com"
+DEFAULT_GOPROXY = "https://goproxy.cn,direct"
 
 
 class Action(str, Enum):
@@ -66,6 +70,31 @@ def validate(origin: str, project: str, subnet: str):
     return origin.rstrip("/"), network, bool(local)
 
 
+def validate_source_url(value: str, name: str, allow_http: bool = False) -> str:
+    """Validate a public package/OS mirror without accepting credentials or shell syntax."""
+    try:
+        parsed = urlsplit(value)
+    except ValueError as error:
+        raise ValueError(f"{name} must be a valid HTTPS URL") from error
+    schemes = ("http", "https") if allow_http else ("https",)
+    if (parsed.scheme not in schemes or not parsed.hostname or parsed.username or parsed.password
+            or parsed.query or parsed.fragment or any(char in value for char in "\"'`$;\n\r")):
+        expected = "HTTP(S)" if allow_http else "HTTPS"
+        raise ValueError(f"{name} must be an {expected} URL without credentials, query or shell characters")
+    return value.rstrip("/")
+
+
+def validate_goproxy(value: str) -> str:
+    parts = [part.strip() for part in value.split(",") if part.strip()]
+    if not parts:
+        raise ValueError("goproxy must contain at least one HTTPS proxy or direct")
+    for part in parts:
+        if part in ("direct", "off"):
+            continue
+        validate_source_url(part, "goproxy")
+    return ",".join(parts)
+
+
 def private_write(path: Path, text: str):
     # Exclusive creation: never silently replace credentials or follow symlinks.
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
@@ -93,13 +122,20 @@ def validate_directory(directory: Path):
             raise ValueError("inside this repository, private deployment files must stay under deploy/runtime")
 
 
-def initialize(directory: Path, origin: str, project: str = "clarence-blog", subnet: str = "172.30.240.0/24", registry: str = "m.daocloud.io/docker.io/library") -> dict:
+def initialize(directory: Path, origin: str, project: str = "clarence-blog", subnet: str = "172.30.240.0/24",
+               registry: str = DEFAULT_REGISTRY, apt_mirror: str = DEFAULT_APT_MIRROR,
+               npm_registry: str = DEFAULT_NPM_REGISTRY, goproxy: str = DEFAULT_GOPROXY) -> dict:
     origin, network, local = validate(origin, project, subnet)
     if not re.fullmatch(r"[a-z0-9.-]+(?::[0-9]+)?(?:/[a-z0-9._-]+)+", registry):
         raise ValueError("registry must be a hostname/path without credentials or query parameters")
+    apt_mirror = validate_source_url(apt_mirror, "apt_mirror", allow_http=True)
+    npm_registry = validate_source_url(npm_registry, "npm_registry")
+    goproxy = validate_goproxy(goproxy)
     directory = directory.absolute()
     validate_directory(directory)
-    expected = {"version": 1, "origin": origin, "project": project, "subnet": str(network), "registry": registry}
+    expected = {"version": 1, "origin": origin, "project": project, "subnet": str(network),
+                "registry": registry, "apt_mirror": apt_mirror, "npm_registry": npm_registry,
+                "goproxy": goproxy}
     required = ["state.json", "config.yaml", "db_password", "db_root_password", "app-init.sql", "compose.yaml", "Caddyfile"]
     if directory.is_symlink():
         raise ValueError("deployment directory must not be a symlink")
@@ -137,8 +173,10 @@ def initialize(directory: Path, origin: str, project: str = "clarence-blog", sub
         "image": f"{project}-app:local",
         "build": {"context": str(ROOT), "dockerfile": "deploy/Dockerfile", "args": {
             "GO_IMAGE": f"{registry}/golang:1.26",
-            "NODE_IMAGE": f"{registry}/node:22-slim",
-            "GOPROXY": "https://goproxy.cn,direct",
+                "NODE_IMAGE": f"{registry}/node:26",
+                "GOPROXY": goproxy,
+                "APT_MIRROR": apt_mirror,
+                "NPM_REGISTRY": npm_registry,
         }},
         "restart": "unless-stopped", "init": True,
         "secrets": ["app_config"], "volumes": ["app_data:/app/data"],
@@ -211,8 +249,8 @@ def initialize(directory: Path, origin: str, project: str = "clarence-blog", sub
     replace_generated(directory / "Caddyfile", caddy)
     if not reusing:
         private_write(directory / "state.json", json.dumps(expected, indent=2) + "\n")
-    elif state.get("registry") != registry:
-        # Image mirrors are interchangeable deployment inputs; preserve data and credentials.
+    elif any(state.get(name) != expected[name] for name in ("registry", "apt_mirror", "npm_registry", "goproxy")):
+        # Build mirrors are interchangeable deployment inputs; preserve data and credentials.
         replace_generated(directory / "state.json", json.dumps(expected, indent=2) + "\n")
     return expected
 
@@ -270,7 +308,10 @@ def main():
     parser.add_argument("--directory", type=Path, default=DEFAULT_DIRECTORY)
     parser.add_argument("--project", default=None)
     parser.add_argument("--subnet", default=None)
-    parser.add_argument("--registry", default=None, help="official-image registry path; defaults to m.daocloud.io/docker.io/library")
+    parser.add_argument("--registry", default=None, help=f"official-image registry path; defaults to {DEFAULT_REGISTRY}")
+    parser.add_argument("--apt-mirror", default=None, help=f"Debian mirror base URL; defaults to {DEFAULT_APT_MIRROR}")
+    parser.add_argument("--npm-registry", default=None, help=f"npm registry URL; defaults to {DEFAULT_NPM_REGISTRY}")
+    parser.add_argument("--goproxy", default=None, help=f"Go module proxy list; defaults to {DEFAULT_GOPROXY}")
     args = parser.parse_args()
     directory = args.directory.absolute()
     try:
@@ -280,7 +321,12 @@ def main():
             origin = args.origin or existing.get("origin")
             if not origin:
                 raise ValueError("first deployment requires --origin https://your.domain")
-            state = initialize(directory, origin, args.project or existing.get("project", "clarence-blog"), args.subnet or existing.get("subnet", "172.30.240.0/24"), args.registry or existing.get("registry", "m.daocloud.io/docker.io/library"))
+            state = initialize(directory, origin, args.project or existing.get("project", "clarence-blog"),
+                               args.subnet or existing.get("subnet", "172.30.240.0/24"),
+                               args.registry or existing.get("registry", DEFAULT_REGISTRY),
+                               args.apt_mirror or existing.get("apt_mirror", DEFAULT_APT_MIRROR),
+                               args.npm_registry or existing.get("npm_registry", DEFAULT_NPM_REGISTRY),
+                               args.goproxy or existing.get("goproxy", DEFAULT_GOPROXY))
             action = Action(args.action)
             if action == Action.INIT:
                 print(f"Private deployment files prepared in {directory}; no services started.")

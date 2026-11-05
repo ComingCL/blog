@@ -36,7 +36,17 @@ python3 scripts/deploy.py --origin https://blog.example.com
 
 重复执行不会生成新密码、重置管理员或清空数据；生成的 Compose／Caddy 文件会刷新为当前代码模板，因此不要在这些产物中维护手工改动。配置缺了一部分时会失败并要求恢复完整文件，避免新密码与旧数据卷错配。不要只编辑密码文件来“轮换”现有数据库密码；真正轮换需要协调数据库 `ALTER ROLE` 与连接配置，本脚本不自动操作已有开发库。
 
-生产构建默认通过 DaoCloud 镜像代理拉取官方镜像：`m.daocloud.io/docker.io/library`。Go 构建阶段使用 `golang:1.26`，Node 构建和运行阶段使用 `node:22-slim`；Go 模块下载使用 `GOPROXY=https://goproxy.cn,direct`，并固定 `GOTOOLCHAIN=local`，避免构建时自动切换工具链。需要改用其他镜像源时，在首次部署传入 `--registry`。
+生产构建默认通过 DaoCloud 镜像代理拉取官方镜像：`m.daocloud.io/docker.io/library`。Go 构建阶段使用 `golang:1.26`，Node 构建和运行阶段使用完整的 `node:26`；Go 模块下载使用 `GOPROXY=https://goproxy.cn,direct`，npm 使用 `https://registry.npmmirror.com`，运行时 Debian 软件包使用 `https://mirrors.aliyun.com`，并固定 `GOTOOLCHAIN=local`，避免构建时自动切换工具链。镜像、APT、npm 和 Go 源都是构建参数，可按服务器网络切换：
+
+```sh
+python3 scripts/deploy.py --origin https://blog.example.com \
+  --registry m.daocloud.io/docker.io/library \
+  --apt-mirror https://mirrors.aliyun.com \
+  --npm-registry https://registry.npmmirror.com \
+  --goproxy https://goproxy.cn,direct
+```
+
+`--apt-mirror` 填镜像站根地址，脚本会分别拼接 Debian 与 Debian Security 路径。完整 Node 26 镜像已验证可以直接使用 HTTPS 国内源；不要把密码、用户名或查询参数放进源地址。重复部署时会沿用 `state.json` 中已选的源，也可以显式传入新源切换；切换只刷新构建参数，不轮换凭据、不清空数据。
 
 ## 更新、状态和日志
 
@@ -72,7 +82,7 @@ Docker Hub 不可达时，可在首次部署选择官方公共镜像镜像源：
 python3 scripts/deploy.py --origin https://blog.example.com --registry public.ecr.aws/docker/library
 ```
 
-`--directory` 和 `--project` 可以隔离另一个实例；仓库内的私有输出仅允许放在被忽略的 `deploy/runtime/` 下，避免自定义目录把密码带入源码，仓库外目录需自行保证不纳入其他版本管理。首次选择的域名、项目名和网段会保存在私有状态中，复用目录时更改这些身份会拒绝执行，防止意外绑定错误数据卷。镜像源不属于数据身份，可以通过 `--registry` 切换；脚本只刷新镜像引用和状态，不轮换密码、不清空卷。
+`--directory` 和 `--project` 可以隔离另一个实例；仓库内的私有输出仅允许放在被忽略的 `deploy/runtime/` 下，避免自定义目录把密码带入源码，仓库外目录需自行保证不纳入其他版本管理。首次选择的域名、项目名和网段会保存在私有状态中，复用目录时更改这些身份会拒绝执行，防止意外绑定错误数据卷。镜像、APT、npm 和 Go 源不属于数据身份，可以通过对应参数切换；脚本只刷新构建引用和状态，不轮换密码、不清空卷。
 
 ## 备份与恢复
 

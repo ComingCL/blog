@@ -130,7 +130,7 @@ Go 的有限业务值统一在 `server/src/models/enums/enums.go`，使用具名
 
 生产配置、独立的应用／数据库管理密码、管理员初始密码与审计密钥均随机生成，保存在忽略的 `deploy/runtime/production/`。采用文件型 secrets，构建只读取公开占位值；数据库不发布宿主机端口，应用数据库角色无超级用户权限。重复部署保持凭据、管理员和数据，刷新生成的 Compose／Caddy 配置；私有文件不完整时失败，不擅自重新生成密码。开发库及开发配置不参与生产初始化。
 
-生产镜像构建默认使用 DaoCloud 的 Docker 官方镜像代理 `m.daocloud.io/docker.io/library`，Go 基础镜像标签为 `golang:1.26`，Node 基础镜像标签为 `node:22-slim`。Go 构建阶段使用 `GOPROXY=https://goproxy.cn,direct` 和 `GOTOOLCHAIN=local`；镜像源可在首次部署或后续通过 `--registry` 切换，切换不轮换凭据或数据。
+生产镜像构建默认使用 DaoCloud 的 Docker 官方镜像代理 `m.daocloud.io/docker.io/library`，Go 基础镜像标签为 `golang:1.26`，Node 基础镜像标签为完整的 `node:26`，不使用 slim 变体。Go 构建阶段使用 `GOPROXY=https://goproxy.cn,direct` 和 `GOTOOLCHAIN=local`；Node 依赖默认使用 `https://registry.npmmirror.com`，运行时 Debian 软件包默认使用 `https://mirrors.aliyun.com`。完整 Node 26 镜像已验证可直接使用 HTTPS APT 源；四类下载源都作为 Compose build args 生成，可在首次部署或后续通过 `--registry`、`--apt-mirror`、`--npm-registry`、`--goproxy` 切换，切换不轮换凭据或数据。
 
 生产更新提供 `python3 scripts/deploy.py redeploy`：先构建镜像，成功后停止当前 Compose 项目并保留卷，再按数据库、迁移、应用和 Caddy 的顺序启动；不执行 `down -v`，预计有短暂中断。`origin` 是规范公网站点 Origin，用于 HTTPS 校验、共享配置、Caddy 证书入口、就绪检查和 Cookie Secure 属性，必须与用户实际访问的域名一致。
 

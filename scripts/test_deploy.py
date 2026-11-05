@@ -58,12 +58,55 @@ class DeploymentTests(unittest.TestCase):
             compose = json.loads((path / "compose.yaml").read_text())
             build_args = compose["services"]["app"]["build"]["args"]
             self.assertEqual(build_args["GO_IMAGE"], "m.daocloud.io/docker.io/library/golang:1.26")
-            self.assertEqual(build_args["NODE_IMAGE"], "m.daocloud.io/docker.io/library/node:22-slim")
+            self.assertEqual(build_args["NODE_IMAGE"], "m.daocloud.io/docker.io/library/node:26")
             self.assertEqual(build_args["GOPROXY"], "https://goproxy.cn,direct")
+            self.assertEqual(build_args["APT_MIRROR"], "https://mirrors.aliyun.com")
+            self.assertEqual(build_args["NPM_REGISTRY"], "https://registry.npmmirror.com")
 
         dockerfile = (deploy.ROOT / "deploy" / "Dockerfile").read_text()
         self.assertIn("ARG GOPROXY", dockerfile)
         self.assertIn("ENV GOPROXY=${GOPROXY} GOTOOLCHAIN=local", dockerfile)
+
+    def test_production_build_sources_are_overridable_without_rotating_credentials(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp)
+            deploy.initialize(path, "https://blog.example.com", registry="registry.example/library",
+                              apt_mirror="https://mirrors.example",
+                              npm_registry="https://npm.example/registry",
+                              goproxy="https://proxy.example,direct")
+            compose = json.loads((path / "compose.yaml").read_text())
+            build_args = compose["services"]["app"]["build"]["args"]
+            self.assertEqual(build_args["APT_MIRROR"], "https://mirrors.example")
+            self.assertEqual(build_args["NPM_REGISTRY"], "https://npm.example/registry")
+            self.assertEqual(build_args["GOPROXY"], "https://proxy.example,direct")
+            password = (path / "db_password").read_bytes()
+
+            deploy.initialize(path, "https://blog.example.com", registry="registry.example/library",
+                              apt_mirror="https://mirrors.other",
+                              npm_registry="https://npm.other/registry",
+                              goproxy="https://proxy.other,direct")
+            self.assertEqual(password, (path / "db_password").read_bytes())
+            state = json.loads((path / "state.json").read_text())
+            self.assertEqual(state["apt_mirror"], "https://mirrors.other")
+            self.assertEqual(state["npm_registry"], "https://npm.other/registry")
+            self.assertEqual(state["goproxy"], "https://proxy.other,direct")
+
+    def test_invalid_build_source_is_rejected_before_private_files_are_written(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "production"
+            with self.assertRaises(ValueError):
+                deploy.initialize(path, "https://blog.example.com", apt_mirror="ftp://mirror.example")
+            self.assertFalse(path.exists())
+
+    def test_dockerfile_switches_apt_sources_and_npm_registry(self):
+        dockerfile = (deploy.ROOT / "deploy" / "Dockerfile").read_text()
+        self.assertIn("ARG APT_MIRROR", dockerfile)
+        self.assertIn("debian-security", dockerfile)
+        self.assertIn("mirrors.aliyun.com", dockerfile)
+        self.assertIn("ARG NPM_REGISTRY", dockerfile)
+        self.assertIn("npm ci --registry=\"${NPM_REGISTRY}\"", dockerfile)
+        self.assertIn("ARG NODE_IMAGE=m.daocloud.io/docker.io/library/node:26", dockerfile)
+        self.assertNotIn("node:22-slim", dockerfile)
 
     def test_repeat_keeps_password_configuration_and_project_identity(self):
         with tempfile.TemporaryDirectory() as tmp:
