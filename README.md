@@ -15,7 +15,7 @@
 
 ## 本地启动
 
-需要 **Go 1.26.10、Node.js 22、Docker Desktop**。旧版 Go 可通过工具链自动下载使用项目要求的版本。Docker 需要处于运行状态。
+需要 **Go 1.26.x、Node.js 22、Docker Desktop**。Docker 需要处于运行状态；生产镜像使用 Go `1.26` 和 Node `22-slim`。
 
 在项目根目录执行：
 

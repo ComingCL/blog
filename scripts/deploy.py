@@ -23,6 +23,7 @@ DEFAULT_DIRECTORY = ROOT / "deploy/runtime/production"
 
 class Action(str, Enum):
     DEPLOY = "deploy"
+    REDEPLOY = "redeploy"
     INIT = "init"
     STATUS = "status"
     LOGS = "logs"
@@ -92,7 +93,7 @@ def validate_directory(directory: Path):
             raise ValueError("inside this repository, private deployment files must stay under deploy/runtime")
 
 
-def initialize(directory: Path, origin: str, project: str = "clarence-blog", subnet: str = "172.30.240.0/24", registry: str = "docker.io/library") -> dict:
+def initialize(directory: Path, origin: str, project: str = "clarence-blog", subnet: str = "172.30.240.0/24", registry: str = "m.daocloud.io/docker.io/library") -> dict:
     origin, network, local = validate(origin, project, subnet)
     if not re.fullmatch(r"[a-z0-9.-]+(?::[0-9]+)?(?:/[a-z0-9._-]+)+", registry):
         raise ValueError("registry must be a hostname/path without credentials or query parameters")
@@ -107,7 +108,8 @@ def initialize(directory: Path, origin: str, project: str = "clarence-blog", sub
         if not all((directory / name).is_file() and not (directory / name).is_symlink() for name in required):
             raise ValueError("partial deployment state: restore the complete private configuration; credentials will not be regenerated")
         state = json.loads((directory / "state.json").read_text())
-        if state != expected:
+        identity = {name: expected[name] for name in ("version", "origin", "project", "subnet")}
+        if any(state.get(name) != value for name, value in identity.items()):
             raise ValueError("existing deployment identity differs; use its original origin/project/subnet")
         config = json.loads((directory / "config.yaml").read_text())
         password = (directory / "db_password").read_text().strip()
@@ -133,7 +135,11 @@ def initialize(directory: Path, origin: str, project: str = "clarence-blog", sub
     logging = {"driver": "json-file", "options": {"max-size": "10m", "max-file": "3"}}
     application = {
         "image": f"{project}-app:local",
-        "build": {"context": str(ROOT), "dockerfile": "deploy/Dockerfile", "args": {"GO_IMAGE": f"{registry}/golang:1.26.10-bookworm", "NODE_IMAGE": f"{registry}/node:22-bookworm-slim"}},
+        "build": {"context": str(ROOT), "dockerfile": "deploy/Dockerfile", "args": {
+            "GO_IMAGE": f"{registry}/golang:1.26",
+            "NODE_IMAGE": f"{registry}/node:22-slim",
+            "GOPROXY": "https://goproxy.cn,direct",
+        }},
         "restart": "unless-stopped", "init": True,
         "secrets": ["app_config"], "volumes": ["app_data:/app/data"],
         "networks": {"edge": {"ipv4_address": app_ip}, "database": {}},
@@ -205,6 +211,9 @@ def initialize(directory: Path, origin: str, project: str = "clarence-blog", sub
     replace_generated(directory / "Caddyfile", caddy)
     if not reusing:
         private_write(directory / "state.json", json.dumps(expected, indent=2) + "\n")
+    elif state.get("registry") != registry:
+        # Image mirrors are interchangeable deployment inputs; preserve data and credentials.
+        replace_generated(directory / "state.json", json.dumps(expected, indent=2) + "\n")
     return expected
 
 
@@ -215,6 +224,15 @@ def compose_command(directory: Path) -> list:
 def deploy_commands(directory: Path) -> list:
     command = compose_command(directory)
     return [command + ["build", "app"], command + ["up", "-d", "--wait", "--wait-timeout", "180", "postgres"],
+            command + ["run", "--rm", "--no-deps", "bootstrap"],
+            command + ["up", "-d", "--wait", "--wait-timeout", "180", "app", "caddy"]]
+
+
+def redeploy_commands(directory: Path) -> list:
+    command = compose_command(directory)
+    # Build first so a failed image build leaves the currently running services available.
+    return [command + ["build", "app"], command + ["stop"],
+            command + ["up", "-d", "--wait", "--wait-timeout", "180", "postgres"],
             command + ["run", "--rm", "--no-deps", "bootstrap"],
             command + ["up", "-d", "--wait", "--wait-timeout", "180", "app", "caddy"]]
 
@@ -252,7 +270,7 @@ def main():
     parser.add_argument("--directory", type=Path, default=DEFAULT_DIRECTORY)
     parser.add_argument("--project", default=None)
     parser.add_argument("--subnet", default=None)
-    parser.add_argument("--registry", default=None, help="official-image registry path; defaults to docker.io/library")
+    parser.add_argument("--registry", default=None, help="official-image registry path; defaults to m.daocloud.io/docker.io/library")
     args = parser.parse_args()
     directory = args.directory.absolute()
     try:
@@ -262,16 +280,21 @@ def main():
             origin = args.origin or existing.get("origin")
             if not origin:
                 raise ValueError("first deployment requires --origin https://your.domain")
-            state = initialize(directory, origin, args.project or existing.get("project", "clarence-blog"), args.subnet or existing.get("subnet", "172.30.240.0/24"), args.registry or existing.get("registry", "docker.io/library"))
+            state = initialize(directory, origin, args.project or existing.get("project", "clarence-blog"), args.subnet or existing.get("subnet", "172.30.240.0/24"), args.registry or existing.get("registry", "m.daocloud.io/docker.io/library"))
             action = Action(args.action)
             if action == Action.INIT:
                 print(f"Private deployment files prepared in {directory}; no services started.")
                 return
             subprocess.run(["docker", "compose", "version"], check=True, stdout=subprocess.DEVNULL)
             command = compose_command(directory)
-            if action == Action.DEPLOY:
-                labels = ["Building Go + Next.js production image", "Waiting for PostgreSQL", "Applying migrations and initializing administrator if missing", "Starting and checking application + HTTPS proxy"]
-                for label, step in zip(labels, deploy_commands(directory)):
+            if action in (Action.DEPLOY, Action.REDEPLOY):
+                if action == Action.REDEPLOY:
+                    labels = ["Building Go + Next.js production image", "Stopping existing production services (volumes preserved)", "Waiting for PostgreSQL", "Applying migrations and initializing administrator if missing", "Starting and checking application + HTTPS proxy"]
+                    steps = redeploy_commands(directory)
+                else:
+                    labels = ["Building Go + Next.js production image", "Waiting for PostgreSQL", "Applying migrations and initializing administrator if missing", "Starting and checking application + HTTPS proxy"]
+                    steps = deploy_commands(directory)
+                for label, step in zip(labels, steps):
                     print(label, flush=True)
                     subprocess.run(step, check=True)
                 wait_public(state["origin"])
@@ -291,6 +314,13 @@ def main():
                     with os.fdopen(fd, "wb") as output:
                         subprocess.run(command + step, check=True, stdout=output)
                 print(f"Backup saved to {backup}; copy it and private configuration off this host.")
+    except FileNotFoundError as error:
+        if error.filename == "docker":
+            message = "Docker CLI not found; install Docker Engine and Compose v2 before deploying"
+        else:
+            message = "required deployment file not found"
+        print("Deployment failed: " + message + ". Existing data was preserved.", file=sys.stderr)
+        return 1
     except (ValueError, OSError, subprocess.CalledProcessError) as error:
         # No exception payloads: third-party tools can include connection credentials.
         print("Deployment failed: " + (str(error) if isinstance(error, ValueError) else type(error).__name__) + ". Check private configuration and service status; existing data was preserved.", file=sys.stderr)

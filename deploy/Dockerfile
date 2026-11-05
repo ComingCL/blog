@@ -1,6 +1,9 @@
-ARG GO_IMAGE=golang:1.26.10-bookworm
-ARG NODE_IMAGE=node:22-bookworm-slim
+ARG GO_IMAGE=m.daocloud.io/docker.io/library/golang:1.26
+ARG NODE_IMAGE=m.daocloud.io/docker.io/library/node:22-slim
+ARG GOPROXY=https://goproxy.cn,direct
 FROM ${GO_IMAGE} AS go-build
+ARG GOPROXY
+ENV GOPROXY=${GOPROXY} GOTOOLCHAIN=local
 WORKDIR /build
 COPY server/go.mod server/go.sum ./
 RUN go mod download

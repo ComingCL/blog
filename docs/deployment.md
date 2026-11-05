@@ -4,13 +4,15 @@
 
 ## 第一次部署
 
-前提：服务器已安装并启动 Docker Engine、Docker Compose v2（支持 `up --wait`，建议 v2.20+）、Python 3.10+；域名 A／AAAA 正确指向服务器，80／443 TCP、443 UDP 可用。不要保留指向其他服务器的 AAAA。服务器需要能下载官方镜像、Go 与 npm 依赖，并有足够内存完成 Next.js 构建；可先从 2 核、4 GiB 内存起步，再按实际测量调整。这是容量起点建议，不是压测结论。
+前提：服务器已安装并启动 Docker Engine、Docker Compose v2（支持 `up --wait`，建议 v2.20+）、Python 3.10+；域名 A／AAAA 正确指向服务器，80／443 TCP、443 UDP 可用。不要保留指向其他服务器的 AAAA。服务器需要能下载镜像、Go 与 npm 依赖，并有足够内存完成 Next.js 构建；可先从 2 核、4 GiB 内存起步，再按实际测量调整。这是容量起点建议，不是压测结论。
 
 将仓库代码放到服务器，在项目根目录执行（替换成自己的域名）：
 
 ```sh
 python3 scripts/deploy.py --origin https://blog.example.com
 ```
+
+`--origin` 是生产站点的规范公网 Origin（协议 + 域名 + 可选端口），不是数据库地址，也不是 Go API 的内部监听地址。脚本用它校验生产必须使用 HTTPS，写入 Go／Web 共享配置，生成 Caddy 的站点和自动 HTTPS 证书入口，构造公网就绪检查 URL，并决定生产 Cookie 的 Secure 属性。它会写入私有 `state.json`；已有部署不能直接把根域名换成子域名。浏览器最终访问的域名必须与它一致，例如使用 `https://www.blog.clarenceliu.xin` 时，DNS、备案、Caddy 和这项参数都应使用同一个域名。
 
 脚本依次生成独立生产配置、构建 Go／Next.js、等待 PostgreSQL 就绪、执行迁移并按需初始化管理员、启动应用和 HTTPS 代理，最后检查公网 `/v1/readyz`。任何一步失败都会停止后续步骤并保留已有数据，不自动删除容器或卷。
 
@@ -34,11 +36,17 @@ python3 scripts/deploy.py --origin https://blog.example.com
 
 重复执行不会生成新密码、重置管理员或清空数据；生成的 Compose／Caddy 文件会刷新为当前代码模板，因此不要在这些产物中维护手工改动。配置缺了一部分时会失败并要求恢复完整文件，避免新密码与旧数据卷错配。不要只编辑密码文件来“轮换”现有数据库密码；真正轮换需要协调数据库 `ALTER ROLE` 与连接配置，本脚本不自动操作已有开发库。
 
+生产构建默认通过 DaoCloud 镜像代理拉取官方镜像：`m.daocloud.io/docker.io/library`。Go 构建阶段使用 `golang:1.26`，Node 构建和运行阶段使用 `node:22-slim`；Go 模块下载使用 `GOPROXY=https://goproxy.cn,direct`，并固定 `GOTOOLCHAIN=local`，避免构建时自动切换工具链。需要改用其他镜像源时，在首次部署传入 `--registry`。
+
 ## 更新、状态和日志
 
 ```sh
 # 在项目目录更新源码后重新构建并部署，沿用已有生产身份和密码
 python3 scripts/deploy.py
+
+# 明确停止当前生产 Compose 项目后重新构建并启动；只停止本项目，保留所有数据卷
+python3 scripts/deploy.py redeploy
+
 python3 scripts/deploy.py status
 python3 scripts/deploy.py logs
 
@@ -47,6 +55,8 @@ python3 scripts/deploy.py init --origin https://blog.example.com
 ```
 
 升级前先备份并检查迁移兼容性。当前迁移是幂等 SQL，升级不会自动回退数据库；没有实现跨版本自动回滚或零停机更新。应用升级会有短暂中断。
+
+`redeploy` 先构建新应用镜像，构建成功后执行当前生产 Compose 项目的 `stop`，再启动 PostgreSQL、运行迁移／管理员初始化、启动应用和 Caddy。它不会执行 `down -v`，不会删除容器卷或重新生成凭据；如果构建失败，旧服务会继续运行。执行期间网站会有中断，完成后脚本会检查公网 `/v1/readyz`。
 
 默认生产项目名为 `clarence-blog`，不复用本机开发 Compose 的 `deploy` 项目。生产的数据库、上传／日志、Caddy 证书分别使用独立命名卷。开发环境的 YAML、8080／3100／5432 端口与数据库卷不被此脚本修改。
 
@@ -62,7 +72,7 @@ Docker Hub 不可达时，可在首次部署选择官方公共镜像镜像源：
 python3 scripts/deploy.py --origin https://blog.example.com --registry public.ecr.aws/docker/library
 ```
 
-`--directory` 和 `--project` 可以隔离另一个实例；仓库内的私有输出仅允许放在被忽略的 `deploy/runtime/` 下，避免自定义目录把密码带入源码，仓库外目录需自行保证不纳入其他版本管理。首次选择的域名、项目名、网段和镜像源会保存在私有状态中。复用目录时更改这些身份参数会拒绝执行，防止意外绑定错误数据卷。
+`--directory` 和 `--project` 可以隔离另一个实例；仓库内的私有输出仅允许放在被忽略的 `deploy/runtime/` 下，避免自定义目录把密码带入源码，仓库外目录需自行保证不纳入其他版本管理。首次选择的域名、项目名和网段会保存在私有状态中，复用目录时更改这些身份会拒绝执行，防止意外绑定错误数据卷。镜像源不属于数据身份，可以通过 `--registry` 切换；脚本只刷新镜像引用和状态，不轮换密码、不清空卷。
 
 ## 备份与恢复
 

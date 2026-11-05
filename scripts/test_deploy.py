@@ -51,6 +51,20 @@ class DeploymentTests(unittest.TestCase):
             self.assertEqual(config["server"]["trusted_proxies"], ["172.30.240.2"])
             self.assertEqual(config["server"]["web_port"], 3100)
 
+    def test_production_build_uses_go_126_and_configured_module_proxy(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp)
+            deploy.initialize(path, "https://blog.example.com")
+            compose = json.loads((path / "compose.yaml").read_text())
+            build_args = compose["services"]["app"]["build"]["args"]
+            self.assertEqual(build_args["GO_IMAGE"], "m.daocloud.io/docker.io/library/golang:1.26")
+            self.assertEqual(build_args["NODE_IMAGE"], "m.daocloud.io/docker.io/library/node:22-slim")
+            self.assertEqual(build_args["GOPROXY"], "https://goproxy.cn,direct")
+
+        dockerfile = (deploy.ROOT / "deploy" / "Dockerfile").read_text()
+        self.assertIn("ARG GOPROXY", dockerfile)
+        self.assertIn("ENV GOPROXY=${GOPROXY} GOTOOLCHAIN=local", dockerfile)
+
     def test_repeat_keeps_password_configuration_and_project_identity(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp)
@@ -62,6 +76,18 @@ class DeploymentTests(unittest.TestCase):
                 deploy.initialize(path, "https://other.example.com", "my-blog")
             with self.assertRaises(ValueError):
                 deploy.initialize(path, "https://blog.example.com", "another-blog")
+
+    def test_repeat_allows_switching_image_registry_without_rotating_secrets(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp)
+            deploy.initialize(path, "https://blog.example.com", "my-blog", registry="docker.io/library")
+            before = {name: (path / name).read_bytes() for name in ["db_password", "config.yaml"]}
+            deploy.initialize(path, "https://blog.example.com", "my-blog", registry="m.daocloud.io/docker.io/library")
+            self.assertEqual(before, {name: (path / name).read_bytes() for name in before})
+            state = json.loads((path / "state.json").read_text())
+            self.assertEqual(state["registry"], "m.daocloud.io/docker.io/library")
+            compose = json.loads((path / "compose.yaml").read_text())
+            self.assertEqual(compose["services"]["postgres"]["image"], "m.daocloud.io/docker.io/library/postgres:16-alpine")
 
     def test_repeat_refreshes_generated_routes_without_rotating_secrets(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -108,6 +134,13 @@ class DeploymentTests(unittest.TestCase):
         self.assertTrue(all(step[:2] == ["docker", "compose"] for step in steps))
         self.assertTrue(all("down" not in step and "-v" not in step for step in steps))
 
+    def test_redeploy_builds_before_stopping_and_never_removes_volumes(self):
+        steps = deploy.redeploy_commands(Path("/tmp/blog production"))
+        self.assertEqual([step[-1] for step in steps], ["app", "stop", "postgres", "bootstrap", "caddy"])
+        self.assertIn("build", steps[0])
+        self.assertEqual(steps[1][-1], "stop")
+        self.assertTrue(all("down" not in step and "-v" not in step for step in steps))
+
     def test_orchestrator_stops_after_failed_build_without_logging_secrets(self):
         with tempfile.TemporaryDirectory() as tmp:
             directory=Path(tmp)
@@ -122,6 +155,17 @@ class DeploymentTests(unittest.TestCase):
             self.assertFalse(any("up" in command or "run" in command for command in calls))
             password=(directory/"db_password").read_text().strip()
             self.assertNotIn(password,stderr.getvalue())
+
+    def test_orchestrator_reports_missing_docker_cli(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            stderr = io.StringIO()
+            missing = FileNotFoundError(2, "No such file or directory", "docker")
+            with patch.object(sys, "argv", ["deploy.py", "--origin", "https://blog.example.com", "--directory", tmp]), \
+                 patch.object(deploy.subprocess, "run", side_effect=missing), \
+                 contextlib.redirect_stderr(stderr), contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(deploy.main(), 1)
+            self.assertIn("Docker CLI not found", stderr.getvalue())
+            self.assertIn("Compose v2", stderr.getvalue())
 
     def test_orchestrator_checks_public_readiness_after_all_four_steps(self):
         with tempfile.TemporaryDirectory() as tmp:
