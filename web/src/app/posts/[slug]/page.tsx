@@ -40,7 +40,7 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
     <article data-post-id={p.id}>
       <header className="nl-article-top">
         <div className={`${readingClass} nl-reading-head`}>
-          <div className="nl-reading-measure">
+          <div>
             <Link href={routes.posts} className="nl-textbtn">
               ← 所有文章
             </Link>
@@ -60,10 +60,8 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
       <div className={readingClass}>
         <div>
           <Markdown content={p.markdown || ""} reading />
-          <div className="nl-reading-measure">
-            <Reactions postId={p.id} likes={p.likes} />
-            <Comments postId={p.id} />
-          </div>
+          <Reactions postId={p.id} likes={p.likes} />
+          <Comments postId={p.id} />
         </div>
         {headings.length > 0 && (
           <aside className="nl-toc" aria-label="文章目录">

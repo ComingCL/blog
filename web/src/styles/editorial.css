@@ -32,6 +32,7 @@ body {
   --nl-line: #e4e9d513;
   --nl-amber: #d1bc92;
   --nl-pink: #cdb5a5;
+  --nl-article-width: 70rem;
   font-family: var(--journal-ui);
   font-weight: 400;
   -webkit-font-smoothing: antialiased;
@@ -396,11 +397,12 @@ body {
   line-height: 2.1;
   color: #deded3;
 }
-/* Keep the reading measure independent of the width of screenshots. */
+/* Share the same column for article text and media. */
 #nightlog .nl-reading {
   width: 100%;
   max-width: 90rem;
-  grid-template-columns: minmax(0, 1fr) minmax(8rem, 10rem);
+  grid-template-columns: minmax(0, var(--nl-article-width)) minmax(8rem, 10rem);
+  justify-content: center;
   gap: clamp(24px, 3vw, 48px);
   padding-inline: clamp(16px, 4vw, 56px);
 }
@@ -411,12 +413,15 @@ body {
   padding-block: 0;
 }
 #nightlog .nl-reading.nl-reading-single {
-  grid-template-columns: minmax(0, 70rem);
-  justify-content: center;
+  grid-template-columns: minmax(0, var(--nl-article-width));
 }
-#nightlog .nl-reading-measure,
-#nightlog .nl-prose-reading > :not(.nl-prose-media, pre, table) {
-  max-width: 46rem;
+#nightlog .nl-article-top :is(h1, .nl-article-intro) {
+  max-width: none;
+  overflow-wrap: anywhere;
+}
+#nightlog .nl-draft-preview {
+  max-width: var(--nl-article-width);
+  margin: 30px auto;
 }
 #nightlog .nl-prose-reading {
   line-height: 1.85;
@@ -426,11 +431,6 @@ body {
 }
 #nightlog .nl-prose-reading .nl-prose-media .nl-media-trigger {
   display: block;
-  margin-inline: auto;
-}
-#nightlog .nl-reading-single .nl-reading-measure,
-#nightlog .nl-reading-single .nl-prose-reading > :not(.nl-prose-media, pre, table) {
-  margin-inline: auto;
 }
 @media (max-width: 1020px) {
   #nightlog .nl-reading {
@@ -439,10 +439,6 @@ body {
   }
   #nightlog .nl-reading .nl-toc {
     display: none;
-  }
-  #nightlog .nl-reading .nl-reading-measure,
-  #nightlog .nl-reading .nl-prose-reading > :not(.nl-prose-media, pre, table) {
-    margin-inline: auto;
   }
 }
 #nightlog .nl-prose h2,

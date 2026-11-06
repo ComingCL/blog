@@ -569,7 +569,7 @@ export function DraftPreview({ id }: { id: string }) {
         <Link href={routes.edit(id)}>返回编辑器 ↗</Link>
       </div>
       {draft && (
-        <article style={{ maxWidth: 740, margin: "30px auto" }}>
+        <article className="nl-draft-preview">
           <span className="nl-tag">{draft.category}</span>
           <h1 style={{ fontSize: 40, lineHeight: 1.4, margin: "22px 0" }}>{draft.title}</h1>
           <p style={{ color: "#b8bac4", marginBottom: 28 }}>{draft.excerpt}</p>
