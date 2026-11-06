@@ -16,23 +16,6 @@ export default async function Home() {
     <>
       <Hero />
       <div className="nl-wrap" id="recent-stories">
-        {posts[0] && (
-          <section className="nl-feature">
-            <div>
-              <div className="nl-label">EDITOR&apos;S PICK / 本期精选</div>
-              <Link href={routes.post(posts[0].slug)} className="nl-card-title">
-                <h2>{posts[0].title}</h2>
-              </Link>
-              <div className="nl-meta">
-                <span>{posts[0].category}</span>
-                <span>{posts[0].likes} 次喜欢</span>
-              </div>
-            </div>
-            <Link className="nl-orbit" href={routes.post(posts[0].slug)}>
-              ↗
-            </Link>
-          </section>
-        )}
         <div className="nl-sectionhead">
           <div>
             <h2>最近写下的</h2>

@@ -1,9 +1,10 @@
 "use client";
 import { CommentStatus } from "@/models/enums";
-import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { api, write } from "@/api/client";
+import { useEffect, useState, type FormEvent } from "react";
+import { usePage } from "@/api/usePage";
+import { write } from "@/api/client";
 import { endpoints } from "@/api/endpoints";
-import type { Page, Comment } from "@/api/types";
+import type { Comment } from "@/api/types";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useApp } from "@/components/Providers";
 import { date, Empty, ErrorMessage, Pagination } from "@/components/Content";
@@ -191,18 +192,17 @@ function ReplyEditor({ reply, onChange }: { reply: Comment; onChange: () => void
 }
 export function Comments({ postId }: { postId?: string }) {
   const { user, notify, openAuth } = useApp();
-  const [data, setData] = useState<Page<Comment> | null>(null),
-    [body, setBody] = useState(""),
+  const [body, setBody] = useState(""),
     [page, setPage] = useState(1),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
   const path = postId ? endpoints.comments(postId) : endpoints.guestbook;
-  const load = useCallback(() => {
-    api<Page<Comment>>(path + "?page=" + page)
-      .then(setData)
-      .catch((e) => setError(e.message));
-  }, [path, page]);
-  useEffect(load, [load]);
+  const {
+    data,
+    error: loadError,
+    loading,
+    reload: load,
+  } = usePage<Comment>(path + "?page=" + page, page, setPage);
   useEffect(() => {
     try {
       setBody(sessionStorage.getItem("comment-draft:" + path) || "");
@@ -262,7 +262,16 @@ export function Comments({ postId }: { postId?: string }) {
           )}
         </div>
       </form>
-      {error && <ErrorMessage message={error} />}
+      {(error || loadError) && (
+        <ErrorMessage
+          message={error || loadError}
+          onRetry={() => {
+            setError("");
+            load();
+          }}
+        />
+      )}
+      {loading && <Empty>正在载入留言…</Empty>}
       <div>
         {data?.list.map((c) => (
           <CommentItem key={c.id} comment={c} onChange={load} />

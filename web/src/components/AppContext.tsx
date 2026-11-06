@@ -8,6 +8,7 @@ interface State {
   user: User | null;
   site: Site;
   ready: boolean;
+  authError?: string;
   refresh: () => Promise<void>;
   setSite: (site: Site) => void;
   notify: (message: string) => void;

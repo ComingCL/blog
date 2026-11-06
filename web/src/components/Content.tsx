@@ -101,10 +101,15 @@ export function PostCard({ post }: { post: Post }) {
 export function Empty({ children }: { children: React.ReactNode }) {
   return <div className="nl-empty">{children}</div>;
 }
-export function ErrorMessage({ message }: { message: string }) {
+export function ErrorMessage({ message, onRetry }: { message: string; onRetry?: () => void }) {
   return (
     <div className="nl-error" role="alert">
       {message}
+      {onRetry && (
+        <button className="nl-textbtn" onClick={onRetry}>
+          重试
+        </button>
+      )}
     </div>
   );
 }

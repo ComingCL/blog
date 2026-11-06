@@ -93,6 +93,59 @@ body {
   min-height: 36px;
   font-size: 12px;
 }
+#nightlog .nl-reading.nl-reading-single {
+  grid-template-columns: minmax(0, 740px);
+  justify-content: center;
+}
+#nightlog .nl-reaction-error {
+  width: 100%;
+  color: #ecb3aa;
+  font-size: 13px;
+}
+@media (max-width: 760px) {
+  #nightlog .nl-admin {
+    grid-template-rows: auto 1fr;
+  }
+  #nightlog .nl-sidebar {
+    align-content: start;
+  }
+  #nightlog .nl-post-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  #nightlog .nl-post-table tbody {
+    display: grid;
+    gap: 16px;
+  }
+  #nightlog .nl-post-table tr {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 12px;
+    padding: 18px;
+    border: 1px solid var(--nl-line);
+    border-radius: 16px;
+  }
+  #nightlog .nl-post-table td {
+    padding: 0;
+    border: 0;
+  }
+  #nightlog .nl-post-table .nl-post-title,
+  #nightlog .nl-post-table .nl-post-actions {
+    grid-column: 1 / -1;
+  }
+  #nightlog .nl-post-table .nl-post-title {
+    font-size: 17px;
+  }
+  #nightlog .nl-post-table .nl-post-date {
+    white-space: nowrap;
+  }
+  #nightlog .nl-post-table .nl-table-actions {
+    gap: 14px;
+  }
+}
 #nightlog .nl-hero {
   min-height: max(760px, 100svh);
   padding: 150px 7% 140px;

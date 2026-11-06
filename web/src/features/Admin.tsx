@@ -5,12 +5,13 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { api, write, ApiError } from "@/api/client";
 import { endpoints } from "@/api/endpoints";
+import { usePage } from "@/api/usePage";
 import type { Page, Post, Draft, Comment, Site, Audit } from "@/api/types";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { AuthGate, useApp } from "@/components/Providers";
 import { date, Empty, ErrorMessage, Markdown, Pagination } from "@/components/Content";
 import { CommentItem } from "./Comments";
-import { routes } from "@/router";
+import { BASE, routes } from "@/router";
 import { MarkdownEditor } from "@/components/MarkdownEditor";
 export function AdminShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -25,7 +26,6 @@ export function AdminShell({ children }: { children: ReactNode }) {
             [routes.comments, "评论与留言"],
             [routes.siteSettings, "站点设置"],
             [routes.audits, "审计与轨迹"],
-            [routes.home, "返回博客 ↗"],
           ].map(([path, label]) => (
             <Link
               className={
@@ -47,22 +47,21 @@ export function AdminShell({ children }: { children: ReactNode }) {
 export function AdminPosts() {
   const { notify } = useApp();
   const confirm = useConfirm();
-  const [data, setData] = useState<Page<Post> | null>(null),
-    [status, setStatus] = useState<PostStatus | "">(""),
+  const [status, setStatus] = useState<PostStatus | "">(""),
     [q, setQ] = useState(""),
     [page, setPage] = useState(1),
     [error, setError] = useState("");
-  const load = useCallback(() => {
-    api<Page<Post>>(
-      endpoints.adminPosts + "?" + new URLSearchParams({ status, q, page: String(page) }),
-    )
-      .then(setData)
-      .catch((e) => setError(e.message));
-  }, [status, q, page]);
-  useEffect(() => {
-    const t = setTimeout(load, 200);
-    return () => clearTimeout(t);
-  }, [load]);
+  const {
+    data,
+    error: loadError,
+    loading,
+    reload: load,
+  } = usePage<Post>(
+    endpoints.adminPosts + "?" + new URLSearchParams({ status, q, page: String(page) }),
+    page,
+    setPage,
+    200,
+  );
   async function action(id: string, kind: PostAction) {
     if (
       (kind === PostAction.Trash || kind === PostAction.Purge) &&
@@ -77,6 +76,7 @@ export function AdminPosts() {
       }))
     )
       return;
+    setError("");
     try {
       await write(
         endpoints.postAction(id, kind === PostAction.Trash ? "" : kind),
@@ -108,7 +108,7 @@ export function AdminPosts() {
             setQ(e.target.value);
             setPage(1);
           }}
-          placeholder="搜索已发布的文章标题"
+          placeholder="搜索文章或草稿标题"
         />
       </label>
       <div className="nl-tabs">
@@ -132,9 +132,18 @@ export function AdminPosts() {
           </button>
         ))}
       </div>
-      {error && <ErrorMessage message={error} />}
+      {(error || loadError) && (
+        <ErrorMessage
+          message={error || loadError}
+          onRetry={() => {
+            setError("");
+            load();
+          }}
+        />
+      )}
+      {loading && <Empty>正在载入文章…</Empty>}
       <div className="nl-table-wrap">
-        <table className="nl-table">
+        <table className="nl-table nl-post-table">
           <thead>
             <tr>
               <th>文章</th>
@@ -146,7 +155,7 @@ export function AdminPosts() {
           <tbody>
             {data?.list.map((p) => (
               <tr key={p.id}>
-                <td>
+                <td className="nl-post-title">
                   <Link href={routes.edit(p.id)}>{p.title || "未命名草稿"}</Link>
                   <small>{p.category || "未分类"}</small>
                 </td>
@@ -159,8 +168,8 @@ export function AdminPosts() {
                         : "○ 草稿"}
                   </span>
                 </td>
-                <td>{date(p.updated_at)}</td>
-                <td>
+                <td className="nl-post-date">{date(p.updated_at)}</td>
+                <td className="nl-post-actions">
                   <div className="nl-table-actions">
                     {p.status === PostStatus.Trashed ? (
                       <>
@@ -205,14 +214,28 @@ export function NewPost() {
   const router = useRouter();
   const started = useRef(false);
   const [error, setError] = useState("");
-  useEffect(() => {
+  const create = useCallback(() => {
     if (started.current) return;
     started.current = true;
+    setError("");
     write<{ id: string }>(endpoints.adminPosts, "POST")
       .then((v) => router.replace(routes.edit(v.id)))
-      .catch((e) => setError(e.message));
+      .catch((e) => {
+        started.current = false;
+        setError(e.message);
+      });
   }, [router]);
-  return error ? <ErrorMessage message={error} /> : <Empty>正在为你的想法创建草稿…</Empty>;
+  useEffect(create, [create]);
+  return error ? (
+    <>
+      <ErrorMessage message={error} />
+      <button className="nl-btn" onClick={create}>
+        重试创建
+      </button>
+    </>
+  ) : (
+    <Empty>正在为你的想法创建草稿…</Empty>
+  );
 }
 function contentKey(d: Draft) {
   return JSON.stringify([d.title, d.slug, d.excerpt, d.markdown, d.category, d.tags, d.cover_url]);
@@ -317,6 +340,57 @@ export function Editor({ id }: { id: string }) {
     setError("还有修改正在保存，请稍后再试。");
     return null;
   }
+  const ensureSavedRef = useRef(ensureSaved);
+  ensureSavedRef.current = ensureSaved;
+  useEffect(() => {
+    let asking = false;
+    const guardLink = (event: MouseEvent) => {
+      if (
+        event.defaultPrevented ||
+        event.button !== 0 ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.shiftKey ||
+        event.altKey
+      )
+        return;
+      const link =
+        event.target instanceof Element ? event.target.closest<HTMLAnchorElement>("a[href]") : null;
+      if (!link || link.target === "_blank" || link.hasAttribute("download")) return;
+      const target = new URL(link.href, location.href);
+      if (
+        target.origin !== location.origin ||
+        (target.pathname !== BASE && !target.pathname.startsWith(BASE + "/"))
+      )
+        return;
+      if (target.pathname === location.pathname && target.search === location.search) return;
+      if (!latest.current || contentKey(latest.current) === savedKey.current) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (asking) return;
+      asking = true;
+      void (async () => {
+        try {
+          if (
+            await confirm({
+              title: "保存后离开编辑器？",
+              description: "当前修改还未保存。保存成功后再打开新页面，也可以留在这里继续写。",
+              action: "保存并离开",
+            })
+          ) {
+            if (await ensureSavedRef.current())
+              router.push(
+                (target.pathname.slice(BASE.length) || "/") + target.search + target.hash,
+              );
+          }
+        } finally {
+          asking = false;
+        }
+      })();
+    };
+    document.addEventListener("click", guardLink, true);
+    return () => document.removeEventListener("click", guardLink, true);
+  }, [confirm, router]);
   async function publish() {
     const d = await ensureSaved();
     if (!d) return;
@@ -487,7 +561,11 @@ export function DraftPreview({ id }: { id: string }) {
     <>
       {error && <ErrorMessage message={error} />}
       <div className="nl-banner">
-        <span>草稿预览 · 未发布</span>
+        <span>
+          {draft?.status === PostStatus.Published
+            ? "草稿预览 · 不影响已发布内容"
+            : "草稿预览 · 未发布"}
+        </span>
         <Link href={routes.edit(id)}>返回编辑器 ↗</Link>
       </div>
       {draft && (
@@ -502,18 +580,18 @@ export function DraftPreview({ id }: { id: string }) {
   );
 }
 export function AdminComments() {
-  const [data, setData] = useState<Page<Comment> | null>(null),
-    [filter, setFilter] = useState<CommentFilter>(CommentFilter.All),
-    [page, setPage] = useState(1),
-    [error, setError] = useState("");
-  const load = useCallback(() => {
-    api<Page<Comment>>(
-      endpoints.adminComments + "?" + new URLSearchParams({ filter, page: String(page) }),
-    )
-      .then(setData)
-      .catch((e) => setError(e.message));
-  }, [filter, page]);
-  useEffect(load, [load]);
+  const [filter, setFilter] = useState<CommentFilter>(CommentFilter.All),
+    [page, setPage] = useState(1);
+  const {
+    data,
+    error,
+    loading,
+    reload: load,
+  } = usePage<Comment>(
+    endpoints.adminComments + "?" + new URLSearchParams({ filter, page: String(page) }),
+    page,
+    setPage,
+  );
   return (
     <>
       <h1>窗边的回声</h1>
@@ -538,7 +616,8 @@ export function AdminComments() {
           </button>
         ))}
       </div>
-      {error && <ErrorMessage message={error} />}{" "}
+      {error && <ErrorMessage message={error} onRetry={load} />}
+      {loading && <Empty>正在载入评论…</Empty>}
       {data?.list.map((c) => (
         <article className="nl-inbox-item" key={c.id}>
           <CommentItem comment={c} onChange={load} admin />
@@ -572,7 +651,7 @@ export function SiteSettings() {
       <div className="nl-settings-head">
         <div className="nl-eyebrow">Make it yours</div>
         <h1>你的名字，你的空间。</h1>
-        <p className="nl-admin-sub">配置保存在数据库，所有访客共享你的新站名。</p>
+        <p className="nl-admin-sub">设置博客名称、简介与首页背景，保存后对访客生效。</p>
       </div>
       <div className="nl-settings-grid">
         <form

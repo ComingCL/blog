@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { UserRole } from "@/models/enums";
 import Link from "next/link";
 import { Toaster, toast } from "sonner";
@@ -7,25 +7,36 @@ import { usePathname } from "next/navigation";
 import { AppContext, useApp, AuthMode } from "./AppContext";
 import { AuthWindow } from "./AuthWindow";
 import { ConfirmProvider } from "./ConfirmDialog";
-import { api, write } from "@/api/client";
+import { api, write, ApiError } from "@/api/client";
 import { endpoints } from "@/api/endpoints";
 import { defaultSite, type Site, type User } from "@/api/types";
 import { routes } from "@/router";
 import { Telemetry } from "@/telemetry/Telemetry";
+import { ErrorMessage } from "./Content";
 export { useApp } from "./AppContext";
 export function Providers({ children, initialSite }: { children: ReactNode; initialSite?: Site }) {
   const [user, setUser] = useState<User | null>(null);
   const [site, setSite] = useState(initialSite || defaultSite);
   const [ready, setReady] = useState(false);
+  const [authError, setAuthError] = useState("");
   const [authMode, setAuthMode] = useState<AuthMode | null>(null);
+  const refreshSequence = useRef(0);
   const openAuth = useCallback((mode: AuthMode = AuthMode.Login) => setAuthMode(mode), []);
   const refresh = useCallback(async () => {
+    const sequence = ++refreshSequence.current;
     try {
-      setUser(await api<User>(endpoints.me));
-    } catch {
-      setUser(null);
+      const currentUser = await api<User>(endpoints.me);
+      if (sequence !== refreshSequence.current) return;
+      setUser(currentUser);
+      setAuthError("");
+    } catch (e) {
+      if (sequence !== refreshSequence.current) return;
+      if (e instanceof ApiError && e.status === 401) {
+        setUser(null);
+        setAuthError("");
+      } else setAuthError("暂时无法确认登录状态，请稍后重试。");
     } finally {
-      setReady(true);
+      if (sequence === refreshSequence.current) setReady(true);
     }
   }, []);
   useEffect(() => {
@@ -38,7 +49,9 @@ export function Providers({ children, initialSite }: { children: ReactNode; init
     document.title = site.name + " · 个人博客";
   }, [site.name]);
   return (
-    <AppContext.Provider value={{ user, site, ready, refresh, setSite, notify: toast, openAuth }}>
+    <AppContext.Provider
+      value={{ user, site, ready, authError, refresh, setSite, notify: toast, openAuth }}
+    >
       <ConfirmProvider>
         <div id="nightlog">
           <Header />
@@ -64,7 +77,7 @@ export function Providers({ children, initialSite }: { children: ReactNode; init
   );
 }
 function Header() {
-  const { user, site, ready, openAuth } = useApp();
+  const { user, site, ready, authError, refresh, openAuth } = useApp();
   const pathname = usePathname();
   return (
     <header className={`nl-nav ${pathname === routes.home ? "nl-nav-home" : ""}`}>
@@ -100,8 +113,12 @@ function Header() {
             {user.display_name}
           </Link>
         ) : (
-          <button type="button" className="nl-link nl-nav-account" onClick={() => openAuth()}>
-            {ready ? "登录 / 注册" : "…"}
+          <button
+            type="button"
+            className="nl-link nl-nav-account"
+            onClick={() => (authError ? void refresh() : openAuth())}
+          >
+            {ready ? (authError ? "重试连接" : "登录 / 注册") : "…"}
           </button>
         )}
       </nav>
@@ -109,8 +126,17 @@ function Header() {
   );
 }
 export function AuthGate({ children, admin = false }: { children: ReactNode; admin?: boolean }) {
-  const { user, ready, openAuth } = useApp();
+  const { user, ready, authError, refresh, openAuth } = useApp();
   if (!ready) return <div className="nl-page">正在确认登录状态…</div>;
+  if (authError)
+    return (
+      <div className="nl-page nl-empty">
+        <ErrorMessage message={authError} />
+        <button className="nl-btn" onClick={() => void refresh()}>
+          重新检查登录状态
+        </button>
+      </div>
+    );
   if (!user)
     return (
       <div className="nl-page nl-empty">

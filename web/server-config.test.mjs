@@ -5,6 +5,11 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { inspect } from "node:util";
 import { loadServerConfig } from "./server-config.mjs";
+import { parse, YAMLParseError } from "yaml";
+
+test("deep YAML collections fail with a bounded parse error instead of overflowing the stack", () => {
+  assert.throws(() => parse("[".repeat(5000) + "1" + "]".repeat(5000)), YAMLParseError);
+});
 
 test("YAML controls both API proxy and server-side rendering configuration", () => {
   const dir = mkdtempSync(join(tmpdir(), "nightlog-yaml-"));

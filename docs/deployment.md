@@ -129,6 +129,14 @@ python3 scripts/deploy.py --origin http://127.0.0.1:18080 \
 
 部署完成后可运行 `python3 scripts/smoke_deployment.py /tmp/blog-smoke`。它只允许回环 HTTP、高位端口、项目名以 `-smoke` 结尾的隔离实例；通过真实登录／CSRF 创建草稿、发布含普通链接／图片／视频的文章，验证匿名 API 和生产 SSR 正文。它会在隔离库中创建文章，不用于生产库。测试后仅清理此次创建的隔离实例。
 
+如需完整界面回归，安装 Web 开发依赖和 Chrome／Chromium 后运行：
+
+```sh
+node scripts/smoke_platform.mjs /tmp/blog-smoke /path/to/chrome
+```
+
+macOS Chrome 的可执行路径是 `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`（传参时加引号）。脚本复用 Web 开发依赖 `playwright-core`，不自动下载浏览器；使用全新临时浏览器上下文，仅允许上述隔离实例。它会注册测试读者、写文章并发布、测试留言／收藏／后台回复及账号设置，截图保存在 `<部署目录>/ui-checks/`。不指向生产数据或个人开发数据，验证后仅清理本次隔离 Compose 项目和卷。
+
 部署健康检查检查 Go 数据库就绪和 Web 首页；正常探针不产生应用访问日志，失败仍记录。Caddy 未启用重复的全量访问日志。容器标准输出采用 Docker 体积轮换，Go 文件日志保留现有体积轮换；它们不等于按天自动清理审计表。
 
 ## 验证依据

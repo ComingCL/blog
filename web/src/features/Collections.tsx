@@ -1,31 +1,31 @@
 "use client";
 import { CollectionKind, ReactionKind } from "@/models/enums";
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
-import { api, write } from "@/api/client";
+import { write } from "@/api/client";
+import { usePage } from "@/api/usePage";
 import { endpoints } from "@/api/endpoints";
-import type { Page, Post } from "@/api/types";
+import type { Post } from "@/api/types";
 import { AuthGate, useApp } from "@/components/Providers";
 import { date, Empty, ErrorMessage, Pagination } from "@/components/Content";
 import { routes } from "@/router";
 export function Collections({ kind }: { kind: CollectionKind }) {
+  const { user } = useApp();
   return (
     <AuthGate>
-      <List kind={kind} />
+      <List key={`${user?.id}:${kind}`} kind={kind} />
     </AuthGate>
   );
 }
 function List({ kind }: { kind: CollectionKind }) {
   const { notify, user } = useApp();
-  const [data, setData] = useState<Page<Post> | null>(null),
-    [page, setPage] = useState(1),
-    [error, setError] = useState("");
-  const load = useCallback(() => {
-    api<Page<Post>>(endpoints.collection(kind) + "?page=" + page)
-      .then(setData)
-      .catch((e) => setError(e.message));
-  }, [kind, page]);
-  useEffect(load, [load]);
+  const [page, setPage] = useState(1);
+  const {
+    data,
+    error,
+    loading,
+    reload: load,
+  } = usePage<Post>(endpoints.collection(kind) + "?page=" + page, page, setPage);
   return (
     <section className="nl-page">
       <div className="nl-pagehead">
@@ -49,7 +49,8 @@ function List({ kind }: { kind: CollectionKind }) {
           我的点赞
         </Link>
       </div>
-      {error && <ErrorMessage message={error} />}
+      {error && <ErrorMessage message={error} onRetry={load} />}
+      {loading && <Empty>正在载入你的记录…</Empty>}
       <div>
         {data?.list.map((p) => (
           <article className="nl-list-row" key={p.id}>
