@@ -16,6 +16,37 @@ spec.loader.exec_module(deploy)
 
 
 class DeploymentTests(unittest.TestCase):
+    def test_host_logs_are_private_binds_and_survive_reinitialization(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp) / "production"
+            deploy.initialize(directory, "https://blog.example.com")
+            compose = json.loads((directory / "compose.yaml").read_text())
+            mounts = compose["services"]["app"]["volumes"]
+            target = [item for item in mounts if isinstance(item, dict) and item.get("target") == "/app/data/logs"]
+            self.assertEqual(len(target), 1, "API and Web logs need an explicit host directory")
+            self.assertEqual(target[0]["type"], "bind")
+            self.assertEqual(target[0]["source"], str(directory / "logs" / "app"))
+            self.assertEqual(target[0]["bind"], {"create_host_path": False})
+            self.assertIn("app_data:/app/data", mounts)
+            logs = directory / "logs" / "app"
+            self.assertEqual(stat.S_IMODE(logs.stat().st_mode), 0o700)
+            (logs / "web-error.jsonl").write_text("existing diagnostic\n")
+            before = (directory / "config.yaml").read_bytes()
+            deploy.initialize(directory, "https://blog.example.com")
+            self.assertEqual((logs / "web-error.jsonl").read_text(), "existing diagnostic\n")
+            self.assertEqual((directory / "config.yaml").read_bytes(), before)
+
+    def test_symlink_log_directory_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp) / "production"
+            directory.mkdir()
+            outside = Path(tmp) / "outside"
+            outside.mkdir()
+            (directory / "logs").symlink_to(outside, target_is_directory=True)
+            with self.assertRaises(ValueError):
+                deploy.initialize(directory, "https://blog.example.com")
+            self.assertEqual(list(outside.iterdir()), [])
+
     def test_private_configuration_cannot_be_generated_in_public_source_directories(self):
         with tempfile.TemporaryDirectory() as tmp, patch.object(deploy,"ROOT",Path(tmp)):
             directory=Path(tmp)/"docs"

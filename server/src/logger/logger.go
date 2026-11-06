@@ -1,6 +1,8 @@
 package logger
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -45,7 +47,23 @@ func Init(dir string) (io.Closer, error) {
 	if e := os.MkdirAll(dir, 0700); e != nil {
 		return nil, e
 	}
-	path := filepath.Join(dir, "application.jsonl")
+	application, e := openRotating(filepath.Join(dir, "application.jsonl"))
+	if e != nil {
+		return nil, e
+	}
+	failures, e := openRotating(filepath.Join(dir, "error.jsonl"))
+	if e != nil {
+		application.Close()
+		return nil, e
+	}
+	slog.SetDefault(slog.New(fanout{
+		slog.NewJSONHandler(io.MultiWriter(os.Stdout, application), &slog.HandlerOptions{AddSource: true}),
+		slog.NewJSONHandler(failures, &slog.HandlerOptions{Level: slog.LevelError, AddSource: true}),
+	}))
+	return logFiles{application, failures}, nil
+}
+
+func openRotating(path string) (*rotating, error) {
 	f, e := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 	if e != nil {
 		return nil, e
@@ -55,8 +73,51 @@ func Init(dir string) (io.Closer, error) {
 		f.Close()
 		return nil, e
 	}
-	r := &rotating{path: path, file: f, size: info.Size()}
-	slog.SetDefault(slog.New(slog.NewJSONHandler(io.MultiWriter(os.Stdout, r), nil)))
-	return r, nil
+	return &rotating{path: path, file: f, size: info.Size()}, nil
 }
 func (r *rotating) Close() error { r.mu.Lock(); defer r.mu.Unlock(); return r.file.Close() }
+
+type logFiles []*rotating
+
+func (files logFiles) Close() error {
+	var result error
+	for _, file := range files {
+		result = errors.Join(result, file.Close())
+	}
+	return result
+}
+
+// Each destination keeps its own level filter, attributes and groups.
+type fanout []slog.Handler
+
+func (handlers fanout) Enabled(ctx context.Context, level slog.Level) bool {
+	for _, handler := range handlers {
+		if handler.Enabled(ctx, level) {
+			return true
+		}
+	}
+	return false
+}
+func (handlers fanout) Handle(ctx context.Context, record slog.Record) error {
+	var result error
+	for _, handler := range handlers {
+		if handler.Enabled(ctx, record.Level) {
+			result = errors.Join(result, handler.Handle(ctx, record.Clone()))
+		}
+	}
+	return result
+}
+func (handlers fanout) WithAttrs(attrs []slog.Attr) slog.Handler {
+	result := make(fanout, len(handlers))
+	for i, handler := range handlers {
+		result[i] = handler.WithAttrs(attrs)
+	}
+	return result
+}
+func (handlers fanout) WithGroup(name string) slog.Handler {
+	result := make(fanout, len(handlers))
+	for i, handler := range handlers {
+		result[i] = handler.WithGroup(name)
+	}
+	return result
+}

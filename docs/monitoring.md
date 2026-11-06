@@ -36,4 +36,8 @@
 - 迁移完成／失败、管理员初始化是否创建、API／Web 启动和停止、子进程异常、审计补偿失败保留明确事件。启动错误不回显私有 YAML 原文。
 - 运维日志用于定位问题，数据库审计用于业务追溯；日志降噪不删除浏览审计或关键操作审计。
 
+生产应用日志直接落到宿主机 `deploy/runtime/production/logs/app/`（相对服务器项目根目录），部署脚本打印绝对路径。`error.jsonl` 为 Go ERROR，`web-error.jsonl` 为 Next.js 错误，`application.jsonl`／`web.jsonl` 为对应应用输出，`runtime.jsonl` 记录进程生命周期。每文件 10 MiB、最多 5 份归档；查询命令及历史卷边界见 [生产部署](deployment.md)。
+
+API 内部错误附带安全的 Go 错误类型、根因类型及可用 SQLSTATE，保留 request ID、路由、IP 和已认证用户名，不写原始数据库 Detail/Hint 或 SQL。Web `server_api_failed` 区分网络、超时、HTTP、无效响应；Next.js `onRequestError` 记录 `web_render_failed`、错误分类及 digest。客户端/服务端调用边界错误归类为 `CLIENT_BOUNDARY`。框架错误文本经进程日志捕获后仅保留诊断字段，不能用完整异常 payload 代替脱敏日志。
+
 Prometheus 标签只应使用有限的路由模板／状态类别，不把用户名、IP、原始文章 ID、request ID 当标签；这些高基数字段留在受限日志或审计中。日志保留、访问权限和异机备份需要随实际运行维护配置；当前体积轮换不代表实现了 7／30／180 天自动清理。

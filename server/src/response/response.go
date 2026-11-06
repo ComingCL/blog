@@ -5,7 +5,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"log/slog"
 	"net/http"
+	"nightlog/server/src/audit"
 	"nightlog/server/src/infrastructure/db"
+	"nightlog/server/src/logger"
 	"nightlog/server/src/models/enums"
 	"nightlog/server/src/models/vo/common"
 	"nightlog/server/src/service"
@@ -35,7 +37,10 @@ func Error(c *gin.Context, e error) {
 	case errors.Is(e, service.ErrUnauthorized):
 		status, code, message = 401, enums.CodeUnauthorized, "请登录，或检查用户名和密码"
 	default:
-		slog.ErrorContext(c.Request.Context(), "request_failed", "request_id", c.GetString("request_id"), "error_type", "internal")
+		meta := audit.From(c.Request.Context())
+		fields := []any{"request_id", c.GetString("request_id"), "route", meta.Route, "method", meta.Method,
+			"client_ip", meta.ClientIP, "user_id", meta.ActorID, "username", meta.Username}
+		slog.ErrorContext(c.Request.Context(), "request_failed", append(fields, logger.FailureFields(e)...)...)
 	}
 	Fail(c, status, code, message)
 }

@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 import next from "next";
 import { serverConfig } from "./server-config.mjs";
 import { clientIPResolver, sanitizeClientHeaders } from "./client-ip.mjs";
+import { assignRequestID } from "./request-id.mjs";
 
 // Normalize the TCP peer before Next.js rewrites and server-side rendering.
 const dev = process.argv.includes("--dev");
@@ -14,6 +15,7 @@ await app.prepare();
 const handle = app.getRequestHandler();
 const upgrade = app.getUpgradeHandler();
 server.on("request", (req, res) => {
+  assignRequestID(req, res);
   sanitizeClientHeaders(req, resolveIP);
   void handle(req, res).catch(() => {
     console.error(

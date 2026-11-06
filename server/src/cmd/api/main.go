@@ -23,7 +23,8 @@ func main() {
 	configPath := flag.String("config", "", "YAML configuration file (default: config/config.yaml)")
 	migrate := flag.Bool("migrate", false, "apply reviewed initial schema")
 	flag.Parse()
-	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
+	// The supervisor persists stderr even before the configured file logger opens.
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stderr, nil)))
 	cfg, e := config.LoadFile(*configPath)
 	if e != nil {
 		slog.Error("config_load_failed")

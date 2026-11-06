@@ -39,6 +39,6 @@ WORKDIR /app/web
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1
 COPY --from=go-build /out/ /app/bin/
 COPY --from=web-build --chown=10001:10001 /app/web/ /app/web/
-COPY deploy/app-entrypoint.sh deploy/healthcheck.mjs deploy/supervisor.mjs /app/deploy/
+COPY deploy/app-entrypoint.sh deploy/healthcheck.mjs deploy/supervisor.mjs deploy/process-logs.mjs /app/deploy/
 ENTRYPOINT ["/bin/sh", "/app/deploy/app-entrypoint.sh"]
 CMD ["node", "/app/deploy/supervisor.mjs"]

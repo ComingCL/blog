@@ -8,7 +8,7 @@
     "start": "node server.mjs",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write src next.config.mjs",
-    "test:config": "node --test server-config.test.mjs client-ip.test.mjs",
+    "test:config": "node --test server-config.test.mjs client-ip.test.mjs request-id.test.mjs",
     "test:unit": "vitest run"
   },
   "dependencies": {

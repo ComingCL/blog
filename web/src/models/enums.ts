@@ -71,6 +71,31 @@ export enum ResponseCode {
 export enum ClientErrorCode {
   ConnectionError = "CONNECTION_ERROR",
 }
+export enum DiagnosticEvent {
+  ServerAPIFailed = "server_api_failed",
+  WebRenderFailed = "web_render_failed",
+}
+export enum ServerAPIFailure {
+  HTTP = "HTTP_ERROR",
+  Network = "NETWORK_ERROR",
+  Timeout = "TIMEOUT",
+  InvalidResponse = "INVALID_RESPONSE",
+}
+export enum RenderFailure {
+  ClientBoundary = "CLIENT_BOUNDARY",
+  ServerAPI = "SERVER_API",
+  Unknown = "RENDER_ERROR",
+}
+export enum TransportErrorCode {
+  Refused = "ECONNREFUSED",
+  Reset = "ECONNRESET",
+  NotFound = "ENOTFOUND",
+  TimedOut = "ETIMEDOUT",
+  ConnectTimeout = "UND_ERR_CONNECT_TIMEOUT",
+  HeadersTimeout = "UND_ERR_HEADERS_TIMEOUT",
+  BodyTimeout = "UND_ERR_BODY_TIMEOUT",
+  Other = "OTHER",
+}
 export enum AuditEvent {
   PageView = "page_view",
   ArticleRead = "article_read",

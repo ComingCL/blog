@@ -4,7 +4,8 @@ import remarkGfm from "remark-gfm";
 import type { Post } from "@/api/types";
 import { routes } from "@/router";
 import { MarkdownImage } from "./MarkdownImage";
-import { MediaPreview, isVideoURL } from "./MediaPreview";
+import { MediaPreview } from "./MediaPreview";
+import { isVideoURL } from "./media";
 import { MediaKind } from "@/models/enums";
 
 // Keep stateful media renderers stable when the editor dispatches scroll/click

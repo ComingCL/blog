@@ -66,6 +66,30 @@ python3 scripts/deploy.py init --origin https://blog.example.com
 
 升级前先备份并检查迁移兼容性。当前迁移是幂等 SQL，升级不会自动回退数据库；没有实现跨版本自动回滚或零停机更新。应用升级会有短暂中断。
 
+应用日志直接挂载到宿主机 `<项目绝对路径>/deploy/runtime/production/logs/app/`。部署脚本打印 `Host application logs:` 和实际绝对路径；自定义 `--directory` 时使用该目录下的 `logs/app/`。
+
+```sh
+# 在服务器项目根目录执行；不需要进入容器
+realpath deploy/runtime/production/logs/app
+tail -F deploy/runtime/production/logs/app/error.jsonl \
+        deploy/runtime/production/logs/app/web-error.jsonl
+```
+
+| 文件 | 内容 |
+| --- | --- |
+| `error.jsonl` | Go ERROR 日志，含 request ID、代码位置及可用 SQLSTATE |
+| `application.jsonl` | Go 访问、关键业务操作、告警及错误 |
+| `web-error.jsonl` | Next.js API 请求失败、页面渲染失败、Web 标准错误 |
+| `web.jsonl` | Web 进程的脱敏结构化输出 |
+| `runtime.jsonl` | 应用进程启动、退出和停止 |
+| `api-stderr.jsonl` | Go 日志初始化前的启动失败及 panic 等标准错误诊断 |
+
+Web 错误文件在出现首条相关输出时创建，`tail -F` 会等待它出现。文件权限 0600、应用日志目录 0700；每文件超过 10 MiB 轮转，最多保留 5 份归档。日志继续同步到 Docker 输出；Caddy 和 bootstrap 初始化输出仍用 `docker compose -f deploy/runtime/production/compose.yaml logs --tail 100 caddy bootstrap` 查看。
+
+升级时数据库和上传卷保留；旧 Go 日志仍留在原 `app_data` 卷的 `logs/`，新 bind 挂载遮住容器内这一旧目录，不会自动迁移或删除历史文件。新日志直接写宿主机目录。
+
+排查文章页面时先对比 `/v1/api/posts/<slug>` 和 `/v1/posts/<slug>`：API 返回 200 不代表 Markdown 页面渲染成功。`server_api_failed` 表示请求／响应失败；`web_render_failed` 表示 Next.js 渲染失败，通过 `request_id`／`digest` 关联。日志不记录完整错误文本、Cookie、请求体、SQL 参数或私有配置。
+
 `redeploy` 先构建新应用镜像，构建成功后执行当前生产 Compose 项目的 `stop`，再启动 PostgreSQL、运行迁移／管理员初始化、启动应用和 Caddy。它不会执行 `down -v`，不会删除容器卷或重新生成凭据；如果构建失败，旧服务会继续运行。执行期间网站会有中断，完成后脚本会检查公网 `/v1/readyz`。
 
 默认生产项目名为 `clarence-blog`，不复用本机开发 Compose 的 `deploy` 项目。生产的数据库、上传／日志、Caddy 证书分别使用独立命名卷。开发环境的 YAML、8080／3100／5432 端口与数据库卷不被此脚本修改。
@@ -102,6 +126,8 @@ python3 scripts/deploy.py --origin http://127.0.0.1:18080 \
 ```
 
 此模式仅允许回环地址上的高位 HTTP 端口，供无公网域名的本机测试使用；不申请公网证书，Cookie Secure 随之关闭。非回环 HTTP 地址会被拒绝。不要用于公网。
+
+部署完成后可运行 `python3 scripts/smoke_deployment.py /tmp/blog-smoke`。它只允许回环 HTTP、高位端口、项目名以 `-smoke` 结尾的隔离实例；通过真实登录／CSRF 创建草稿、发布含普通链接／图片／视频的文章，验证匿名 API 和生产 SSR 正文。它会在隔离库中创建文章，不用于生产库。测试后仅清理此次创建的隔离实例。
 
 部署健康检查检查 Go 数据库就绪和 Web 首页；正常探针不产生应用访问日志，失败仍记录。Caddy 未启用重复的全量访问日志。容器标准输出采用 Docker 体积轮换，Go 文件日志保留现有体积轮换；它们不等于按天自动清理审计表。
 

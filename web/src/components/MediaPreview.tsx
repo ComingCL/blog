@@ -4,18 +4,6 @@ import { PlayCircle, X, ArrowUpRight } from "lucide-react";
 import { useCallback, useRef, useState, type ReactNode } from "react";
 import { MediaKind } from "@/models/enums";
 
-export function isVideoURL(src: string) {
-  try {
-    const url = new URL(src, "https://blog.invalid");
-    return (
-      ["http:", "https:"].includes(url.protocol) &&
-      /\.(mp4|webm|ogv|ogg|m4v|mov)$/i.test(url.pathname)
-    );
-  } catch {
-    return false;
-  }
-}
-
 export function MediaPreview({
   src,
   title,

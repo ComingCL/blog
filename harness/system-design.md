@@ -1,6 +1,6 @@
 # 系统核心设计
 
-更新日期：2026-11-05。此文件描述当前实现；每次变更记录见 `changes/`。完整方案参见 [设计文档](../docs/design.md)。
+更新日期：2026-11-06。此文件描述当前实现；每次变更记录见 `changes/`。完整方案参见 [设计文档](../docs/design.md)。
 
 ## 产品范围
 
@@ -104,6 +104,7 @@ Web 使用 `npm run dev/start` 启动 `web/server.mjs`，先从 TCP socket 确�
 - 写作复用 `@uiw/react-md-editor`，双栏等高、同步滚动、中文工具栏和正文图片上传，继续复用本站 Markdown 渲染与自动保存。
 - `MediaPreview` 复用 Radix：图片点击放大；MP4 / WebM 等直接视频链接点击播放，ESC／关闭按钮返回并停止播放。外链图片统一 no-referrer，失败显示明确占位。视频支持 `[标题](视频URL)` 和 `![标题](视频URL)`，不启用原始 HTML／任意 iframe；目前上传接口仍只支持图片。
 - 有状态的 Markdown 图片／链接渲染组件须定义在模块级，避免编辑器重渲染时卸载弹框。
+- Markdown 在文章页进行服务端渲染。媒体 URL 判别等纯函数放 `web/src/components/media.ts`，不能从 `"use client"` 模块导出后被服务端直接调用；客户端组件本身可以作为 JSX 渲染。文章验收同时检查真实生产 SSR，不能只通过浏览器组件测试判断正常。
 - 弹框使用 Radix Dialog / AlertDialog，保留标题、说明、焦点约束与键盘交互。Portal 位于 `#nightlog` 外，必须使用自己的 `nl-*` 样式。
 
 ## 验证与当前边界
@@ -133,6 +134,8 @@ Go 的有限业务值统一在 `server/src/models/enums/enums.go`，使用具名
 生产镜像构建默认使用 DaoCloud 的 Docker 官方镜像代理 `m.daocloud.io/docker.io/library`，Go 基础镜像标签为 `golang:1.26`，Node 基础镜像标签为完整的 `node:26`，不使用 slim 变体。Go 构建阶段使用 `GOPROXY=https://goproxy.cn,direct` 和 `GOTOOLCHAIN=local`；Node 依赖默认使用 `https://registry.npmmirror.com`，运行时 Debian 软件包默认使用 `https://mirrors.aliyun.com`。完整 Node 26 镜像已验证可直接使用 HTTPS APT 源；四类下载源都作为 Compose build args 生成，可在首次部署或后续通过 `--registry`、`--apt-mirror`、`--npm-registry`、`--goproxy` 切换，切换不轮换凭据或数据。
 
 生产更新提供 `python3 scripts/deploy.py redeploy`：先构建镜像，成功后停止当前 Compose 项目并保留卷，再按数据库、迁移、应用和 Caddy 的顺序启动；不执行 `down -v`，预计有短暂中断。`origin` 是规范公网站点 Origin，用于 HTTPS 校验、共享配置、Caddy 证书入口、就绪检查和 Cookie Secure 属性，必须与用户实际访问的域名一致。
+
+应用日志由宿主机 `<部署目录>/logs/app` bind 到 `/app/data/logs`。Go `application.jsonl`／ERROR-only `error.jsonl` 保留代码位置和安全错误类型／SQLSTATE；Supervisor 持久化脱敏 Web 输出到 `web.jsonl`／`web-error.jsonl`，生命周期到 `runtime.jsonl`，Go 标准错误到 `api-stderr.jsonl`。每文件 10 MiB、5 份归档；Caddy/bootstrap 输出仍归 Docker logs。旧数据卷日志保留但不自动迁移。HTTP 入口生成统一 request ID；SSR API 失败分类和 Next `onRequestError` 渲染诊断可通过 request ID／digest 关联，禁止记录原始异常 payload、Cookie、查询串和正文。
 
 HTTP 只记录一次 `access_end`，正常健康探针、CSRF 取令牌与静态图片请求静默，失败时保留；正常查无记录和快速预期冲突不打印数据库告警。关键业务成功日志在事务成功提交后打印 `operation_committed`；自动保存等高频操作保持原有审计，不额外打印成功行。保留 request ID、来源 IP 和已确认的用户身份，禁止打印 SQL、参数、请求正文、Cookie、令牌、密码或私有 YAML 原文。数据库慢查询／失败、迁移、启动退出、审计补偿失败保留明确事件。
 

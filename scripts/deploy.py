@@ -158,6 +158,10 @@ def initialize(directory: Path, origin: str, project: str = "clarence-blog", sub
         directory.mkdir(parents=True, exist_ok=True, mode=0o700)
         os.chmod(directory, 0o700)
         password, root_password = strong_password(), strong_password()
+    for log_directory in (directory / "logs", directory / "logs" / "app"):
+        if log_directory.is_symlink():
+            raise ValueError("deployment log directory must not be a symlink")
+        log_directory.mkdir(exist_ok=True, mode=0o700)
     proxy_ip, app_ip = str(network[2]), str(network[3])
     if not reusing:
         config = {
@@ -179,7 +183,10 @@ def initialize(directory: Path, origin: str, project: str = "clarence-blog", sub
                 "NPM_REGISTRY": npm_registry,
         }},
         "restart": "unless-stopped", "init": True,
-        "secrets": ["app_config"], "volumes": ["app_data:/app/data"],
+        "secrets": ["app_config"], "volumes": ["app_data:/app/data", {
+            "type": "bind", "source": str(directory / "logs" / "app"),
+            "target": "/app/data/logs", "bind": {"create_host_path": False},
+        }],
         "networks": {"edge": {"ipv4_address": app_ip}, "database": {}},
         "depends_on": {"postgres": {"condition": "service_healthy"}},
         "healthcheck": {"test": ["CMD", "node", "/app/deploy/healthcheck.mjs"], "interval": "20s", "timeout": "10s", "retries": 6, "start_period": "30s"},
@@ -328,6 +335,7 @@ def main():
                                args.npm_registry or existing.get("npm_registry", DEFAULT_NPM_REGISTRY),
                                args.goproxy or existing.get("goproxy", DEFAULT_GOPROXY))
             action = Action(args.action)
+            print(f"Host application logs: {directory / 'logs' / 'app'}", flush=True)
             if action == Action.INIT:
                 print(f"Private deployment files prepared in {directory}; no services started.")
                 return

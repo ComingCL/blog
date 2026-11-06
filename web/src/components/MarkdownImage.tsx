@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
-import { MediaPreview, isVideoURL } from "./MediaPreview";
+import { MediaPreview } from "./MediaPreview";
+import { isVideoURL } from "./media";
 import { MediaKind } from "@/models/enums";
 
 export function MarkdownImage({

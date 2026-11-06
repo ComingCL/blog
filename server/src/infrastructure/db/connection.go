@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"nightlog/server/src/audit"
 	"nightlog/server/src/infrastructure/db/query"
+	appLogger "nightlog/server/src/logger"
 	"strings"
 	"time"
 
@@ -63,7 +64,13 @@ func (safeLogger) Trace(ctx context.Context, begin time.Time, fc func() (string,
 	if err != nil {
 		level = slog.LevelError
 	}
-	slog.Log(ctx, level, "db_query", "request_id", audit.From(ctx).RequestID, "duration_ms", duration.Milliseconds(), "rows", rows, "failed", err != nil)
+	meta := audit.From(ctx)
+	fields := []any{"request_id", meta.RequestID, "route", meta.Route, "client_ip", meta.ClientIP,
+		"user_id", meta.ActorID, "username", meta.Username, "duration_ms", duration.Milliseconds(), "rows", rows, "failed", err != nil}
+	if err != nil {
+		fields = append(fields, appLogger.FailureFields(err)...)
+	}
+	slog.Log(ctx, level, "db_query", fields...)
 }
 func (d *Database) Stores() *Stores { return NewStores(query.Use(d.conn)) }
 func (d *Database) Within(ctx context.Context, fn func(*Stores) error) error {
