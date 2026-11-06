@@ -93,10 +93,6 @@ body {
   min-height: 36px;
   font-size: 12px;
 }
-#nightlog .nl-reading.nl-reading-single {
-  grid-template-columns: minmax(0, 740px);
-  justify-content: center;
-}
 #nightlog .nl-reaction-error {
   width: 100%;
   color: #ecb3aa;
@@ -399,6 +395,55 @@ body {
   font-size: 19px;
   line-height: 2.1;
   color: #deded3;
+}
+/* Keep the reading measure independent of the width of screenshots. */
+#nightlog .nl-reading {
+  width: 100%;
+  max-width: 90rem;
+  grid-template-columns: minmax(0, 1fr) minmax(8rem, 10rem);
+  gap: clamp(24px, 3vw, 48px);
+  padding-inline: clamp(16px, 4vw, 56px);
+}
+#nightlog .nl-article-top {
+  padding-inline: 0;
+}
+#nightlog .nl-reading.nl-reading-head {
+  padding-block: 0;
+}
+#nightlog .nl-reading.nl-reading-single {
+  grid-template-columns: minmax(0, 70rem);
+  justify-content: center;
+}
+#nightlog .nl-reading-measure,
+#nightlog .nl-prose-reading > :not(.nl-prose-media, pre, table) {
+  max-width: 46rem;
+}
+#nightlog .nl-prose-reading {
+  line-height: 1.85;
+}
+#nightlog .nl-prose-reading .nl-prose-media {
+  margin-block: clamp(16px, 2vw, 28px);
+}
+#nightlog .nl-prose-reading .nl-prose-media .nl-media-trigger {
+  display: block;
+  margin-inline: auto;
+}
+#nightlog .nl-reading-single .nl-reading-measure,
+#nightlog .nl-reading-single .nl-prose-reading > :not(.nl-prose-media, pre, table) {
+  margin-inline: auto;
+}
+@media (max-width: 1020px) {
+  #nightlog .nl-reading {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+  #nightlog .nl-reading .nl-toc {
+    display: none;
+  }
+  #nightlog .nl-reading .nl-reading-measure,
+  #nightlog .nl-reading .nl-prose-reading > :not(.nl-prose-media, pre, table) {
+    margin-inline: auto;
+  }
 }
 #nightlog .nl-prose h2,
 #nightlog .nl-prose h3 {
@@ -1353,8 +1398,12 @@ body {
   top: 50%;
   transform: translate(-50%, -50%);
   z-index: 91;
-  width: min(1180px, calc(100% - 56px));
-  max-height: calc(100dvh - 56px);
+  --media-gutter: clamp(12px, 3vw, 32px);
+  width: max-content;
+  min-width: min(18rem, calc(100% - var(--media-gutter) * 2));
+  max-width: min(90rem, calc(100% - var(--media-gutter) * 2));
+  max-height: calc(100dvh - var(--media-gutter) * 2);
+  padding: 52px 12px 12px;
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
@@ -1371,71 +1420,39 @@ body {
 .nl-media-window * {
   box-sizing: border-box;
 }
-.nl-media-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 21px 65px 18px 25px;
-}
-.nl-media-heading h2 {
-  font: 400 21px/1.5 var(--journal-font);
-  margin: 0;
-  overflow-wrap: anywhere;
-}
-.nl-media-heading p {
-  margin: 5px 0 0;
-  font-size: 11px;
-  line-height: 1.7;
-  color: #9fa991;
+.nl-media-window.is-video {
+  width: min(72rem, calc(100% - var(--media-gutter) * 2));
 }
 .nl-media-window .nl-dialog-close {
   cursor: pointer;
-  top: 23px;
-  right: 20px;
+  top: 8px;
+  right: 12px;
 }
 .nl-media-canvas {
-  min-height: 150px;
   min-width: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: auto;
-  background: #0c100b;
-  padding: 12px;
 }
 .nl-media-canvas > img,
 .nl-media-canvas > video {
   display: block;
   max-width: 100%;
-  max-height: calc(100dvh - 215px);
+  max-height: calc(100dvh - var(--media-gutter) * 2 - 66px);
   width: auto;
   height: auto;
   object-fit: contain;
-  border-radius: 6px;
+  border-radius: 8px;
 }
 .nl-media-canvas > video {
   width: 100%;
+  background: #0c100b;
 }
 .nl-media-unavailable {
-  padding: 50px 20px;
+  margin: 0;
+  padding: 35px 20px;
   font-size: 13px;
   color: #c5bca5;
-}
-.nl-media-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 16px 25px;
-  font-size: 11px;
-  color: #9ca78f;
-}
-.nl-media-footer a {
-  color: #d6c39d;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  text-decoration: none;
 }
 .nl-media-window :focus-visible {
   outline: 2px solid #d1bc92;
@@ -1443,21 +1460,7 @@ body {
 }
 @media (max-width: 640px) {
   .nl-media-window {
-    width: calc(100% - 24px);
-    max-height: calc(100dvh - 24px);
-    border-radius: 18px;
-  }
-  .nl-media-heading {
-    padding: 18px 58px 16px 18px;
-  }
-  .nl-media-heading h2 {
-    font-size: 19px;
-  }
-  .nl-media-footer {
-    padding: 14px 18px;
-  }
-  .nl-media-canvas {
-    padding: 6px;
+    border-radius: 16px;
   }
 }
 @media (prefers-reduced-motion: reduce) {

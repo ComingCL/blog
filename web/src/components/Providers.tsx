@@ -45,9 +45,6 @@ export function Providers({ children, initialSite }: { children: ReactNode; init
       .then((value) => setSite((current) => (value.version >= current.version ? value : current)))
       .catch(() => {});
   }, [refresh]);
-  useEffect(() => {
-    document.title = site.name + " · 个人博客";
-  }, [site.name]);
   return (
     <AppContext.Provider
       value={{ user, site, ready, authError, refresh, setSite, notify: toast, openAuth }}

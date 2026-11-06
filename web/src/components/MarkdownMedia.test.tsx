@@ -5,6 +5,39 @@ import { Markdown } from "./Content";
 import { MarkdownImage } from "./MarkdownImage";
 
 describe("Markdown media preview", () => {
+  it("keeps a descriptive dialog name without showing editor placeholders or outbound actions", async () => {
+    render(<MarkdownImage src="/v1/uploads/test.jpg" alt="在这里插入图片描述" />);
+    const trigger = screen.getByRole("button", { name: /预览图片/ });
+    expect(trigger).not.toHaveAccessibleName(/在这里插入图片描述/);
+    await userEvent.click(trigger);
+    const dialog = await screen.findByRole("dialog", { name: "图片预览" });
+    expect(
+      within(dialog).queryByText(/在这里插入图片描述|按 Esc 返回阅读|把片刻/),
+    ).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole("link")).not.toBeInTheDocument();
+    fireEvent.error(within(dialog).getByRole("img"));
+    expect(within(dialog).getByRole("status")).toHaveTextContent("图片暂时无法加载");
+    expect(within(dialog).queryByText(/打开原文件/)).not.toBeInTheDocument();
+  });
+
+  it("separates pasted screenshots from neighboring text and keeps their reading order", () => {
+    const { container } = render(
+      <Markdown
+        reading
+        content={
+          "打开[项目文档](https://example.com/guide)\n![第一步](/one.png)\n[![第二步](/two.png)](/original.png)\n继续阅读。"
+        }
+      />,
+    );
+    const paragraphs = Array.from(container.querySelectorAll("p"));
+    expect(paragraphs).toHaveLength(4);
+    expect(paragraphs[0]).toHaveTextContent("打开项目文档");
+    expect(paragraphs[0]).not.toHaveClass("nl-prose-media");
+    expect(within(paragraphs[1]).getByRole("button", { name: "预览图片：第一步" })).toBeVisible();
+    expect(within(paragraphs[2]).getByRole("button", { name: "预览图片：第二步" })).toBeVisible();
+    expect(paragraphs.slice(1, 3).every((p) => p.classList.contains("nl-prose-media"))).toBe(true);
+    expect(paragraphs[3]).toHaveTextContent("继续阅读。");
+  });
   it("keeps an open media dialog alive when the editor parent rerenders", async () => {
     const content = "![窗边](https://images.example.com/window.jpg)";
     const { rerender } = render(<Markdown content={content} />);

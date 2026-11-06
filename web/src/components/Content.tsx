@@ -6,6 +6,7 @@ import { routes } from "@/router";
 import { MarkdownImage } from "./MarkdownImage";
 import { MediaPreview } from "./MediaPreview";
 import { isVideoURL } from "./media";
+import { readingMedia } from "./readingMedia";
 import { MediaKind } from "@/models/enums";
 
 // Keep stateful media renderers stable when the editor dispatches scroll/click
@@ -35,12 +36,13 @@ export const date = (value: string | null | undefined) =>
         day: "2-digit",
       }).format(new Date(value))
     : "尚未发布";
-export function Markdown({ content }: { content: string }) {
+export function Markdown({ content, reading = false }: { content: string; reading?: boolean }) {
   let heading = 0;
   return (
-    <div className="nl-prose">
+    <div className={reading ? "nl-prose nl-prose-reading" : "nl-prose"}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
+        rehypePlugins={reading ? [readingMedia] : []}
         skipHtml
         components={{
           h2: ({ children }) => <h2 id={"section-" + heading++}>{children}</h2>,

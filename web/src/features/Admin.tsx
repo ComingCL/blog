@@ -573,7 +573,7 @@ export function DraftPreview({ id }: { id: string }) {
           <span className="nl-tag">{draft.category}</span>
           <h1 style={{ fontSize: 40, lineHeight: 1.4, margin: "22px 0" }}>{draft.title}</h1>
           <p style={{ color: "#b8bac4", marginBottom: 28 }}>{draft.excerpt}</p>
-          <Markdown content={draft.markdown} />
+          <Markdown content={draft.markdown} reading />
         </article>
       )}
     </>
@@ -632,6 +632,7 @@ export function AdminComments() {
   );
 }
 export function SiteSettings() {
+  const router = useRouter();
   const { site, setSite, notify } = useApp();
   const [loaded, setLoaded] = useState(false);
   const [form, setForm] = useState<Site>(site),
@@ -663,6 +664,7 @@ export function SiteSettings() {
               const fresh = await api<Site>(endpoints.site);
               setForm(fresh);
               setSite(fresh);
+              router.refresh();
               notify("站点设置已保存");
             } catch (e) {
               setError((e as Error).message);

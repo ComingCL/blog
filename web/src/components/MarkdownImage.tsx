@@ -17,10 +17,11 @@ export function MarkdownImage({
   if (typeof src !== "string" || !src) return <span className="nl-image-error">图片地址无效</span>;
   if (isVideoURL(src))
     return <MediaPreview src={src} title={alt || "文章视频"} kind={MediaKind.Video} />;
+  const description = alt?.trim() === "在这里插入图片描述" ? "" : alt?.trim();
   if (failed === src)
     return (
       <span className="nl-image-error" role="status">
-        图片暂时无法加载 · {alt || "未命名图片"}{" "}
+        图片暂时无法加载{description && ` · ${description}`}{" "}
         <a href={src} target="_blank" rel="noreferrer">
           打开原图 ↗
         </a>
@@ -28,11 +29,11 @@ export function MarkdownImage({
       </span>
     );
   return (
-    <MediaPreview src={src} title={alt || "文章图片"} kind={MediaKind.Image}>
+    <MediaPreview src={src} title={description || "文章图片"} kind={MediaKind.Image}>
       <img
         src={src}
-        alt={alt || "文章图片"}
-        title={title}
+        alt={description || "文章图片"}
+        title={title?.trim() === "在这里插入图片描述" ? undefined : title}
         referrerPolicy="no-referrer"
         loading="lazy"
         decoding="async"

@@ -1,4 +1,7 @@
 import { Comments } from "@/features/Comments";
+
+export const metadata = { title: "留言板" };
+
 export default function Page() {
   return (
     <section className="nl-page" style={{ maxWidth: 800 }}>

@@ -26,6 +26,25 @@ function Probe() {
   );
 }
 beforeEach(() => vi.clearAllMocks());
+it("preserves the current route title when the client hydrates and loads site settings", async () => {
+  const previous = document.title;
+  document.title = "雨夜笔记 · Clarence Liu";
+  vi.mocked(api).mockImplementation(async (path) => {
+    if (path === "/site") return { ...defaultSite, name: "Clarence Liu", version: 1 };
+    throw new ApiError("未登录", 401, ResponseCode.Unauthorized, "");
+  });
+  try {
+    render(
+      <Providers>
+        <Probe />
+      </Providers>,
+    );
+    await screen.findByText("登录后继续");
+    expect(document.title).toBe("雨夜笔记 · Clarence Liu");
+  } finally {
+    document.title = previous;
+  }
+});
 it("keeps a known session on transient server failure but clears it on a confirmed 401", async () => {
   let calls = 0;
   vi.mocked(api).mockImplementation(async (path) => {
